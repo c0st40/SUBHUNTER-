@@ -1,4 +1,4 @@
-# SUBHUNTER 🔍
+# SUBHUNTER
 
 > **Framework modular de recon ofensivo para Bug Bounty e Pentest externo.**  
 > Cobre todo o ciclo de ataque: da seed inicial até fuzzing ativo e extração de segredos.
