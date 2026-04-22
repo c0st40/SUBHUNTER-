@@ -1,0 +1,3328 @@
+#!/bin/bash
+set -euo pipefail
+
+usage() {
+  cat <<'USAGE'
+Uso:
+  recon tools
+  recon root <dominio>
+  recon reversewhois <dominio> [--output reverse_whois_domains.txt]
+  recon dnsrecon <dominio> [--output dnsrecon.txt] [--axfr-output dnsrecon_axfr.txt]
+  recon mailrecon <dominio> [--output dns_mail.txt] [--ioc-output dns_mail_iocs.txt]
+  recon amsanintel <dominio> [--asn-file asninfo.txt] [--output amass_intel_domains.txt]
+  recon shodan <dominio> [--org org_name] [--asn-file asninfo.txt] [--output shodan_findings.txt]
+  recon cidr <dominio> [--asn-file asninfo.txt] [--cidr-out cidr_hosts.txt] [--ptr-out cidr_ptr_domains.txt]
+  recon uncover <dominio> [--org org_name] [--output uncover_hosts.txt]
+  recon csp <dominio> [--output csp_domains.txt]
+  recon dorks <dominio> [--output dorks_results.txt]
+  recon permutations <dominio> [--input all_subs.txt] [--resolvers resolvers.txt] [--candidates permut_candidates.txt] [--output permut_resolved.txt]
+  recon extractips [--input resolved.txt] [--output resolved_ips.txt]
+  recon reverseip [--ips resolved_ips.txt] [--output reverse_ip_domains.txt]
+  recon github <dominio> [--org org_name] [--token GITHUB_TOKEN] [--subs-out github_subs.txt] [--secrets-out github_secrets.json]
+  recon crawljs [--live live.txt] [--katana katana_urls.txt] [--gau gau_urls.txt] [--all all_urls.txt] [--sensitive sensitive_files.txt]
+  recon params [--urls all_urls.txt] [--output params_found.json] [--threads 10] [--max-targets 50]
+  recon jssecrets [--urls all_urls.txt] [--js js_files.txt] [--exposures js_exposures.txt] [--secrets secrets.txt] [--templates ~/nuclei-templates/exposures/] [--secretfinder SecretFinder.py]
+  recon takeover [--input all_subs_merged.txt] [--nuclei-out takeover_findings.txt] [--subzy-out subzy_results.txt] [--templates ~/nuclei-templates/takeovers/]
+  recon screenshot [--live live.txt] [--output-dir screenshots] [--threads 10]
+  recon cloud <dominio> [--keyword keyword] [--cloud-out cloud_findings.txt] [--s3-out s3_findings.txt] [--threads 10] [--disable-azure]
+  recon portscan [--hosts resolved.txt] [--ips resolved_ips.txt] [--masscan-out masscan_raw.txt] [--nmap-out nmap_services.xml] [--rate 5000] [--wait 0] [--ports 1-65535]
+  recon asn <arquivo_dominios> [arquivo_saida]
+  recon subs <dominio|arquivo.txt> [--mode normal|stealth] [--cookie "k=v"]
+  recon smartenum [--input base_patterns.txt] [--output smart_wordlist.txt]
+  recon bruteforce <dominio> [--wordlist smart_wordlist.txt] [--resolvers resolvers.txt] [--rate-limit 1000] [--wildcard-tests 50] [--wildcard-batch 1000000] [--output brute_raw.txt]
+  recon validate [--passive all_subs.txt] [--brute brute_raw.txt] [--merged all_subs_merged.txt] [--resolvers resolvers.txt] [--output resolved.txt] [--force-resolve]
+  recon live [--input resolved.txt] [--output live.txt]
+  recon httpxfull [--input resolved.txt] [--output httpx_full.txt] [--live live.txt] [--ips resolved_ips.txt] [--waf-out waf_results.txt] [--cdn-out cdn_results.txt] [--ssl-out ssl_results.json]
+  recon buildsubs <dominio> [--output subdomains.txt]
+  recon buildpaths [--output paths.txt]
+  recon fuzz <dominio> [--subs subdomains.txt] [--paths paths.txt] [--threads 80] [--results results]
+  recon kiterunner [--live live.txt] [--routes routes-large.kite] [--output kiterunner_results.txt] [--threads 10]
+  recon all <dominio|arquivo.txt> [--mode normal|stealth] [--cookie "k=v"] [--patterns base_patterns.txt] [--subs subdomains.txt] [--paths paths.txt] [--threads 80] [--force-resolve]
+
+Exemplos:
+  recon tools
+  recon root example.com
+  recon reversewhois example.com --output reverse_whois_domains.txt
+  recon dnsrecon example.com --output dnsrecon.txt --axfr-output dnsrecon_axfr.txt
+  recon mailrecon example.com --output dns_mail.txt --ioc-output dns_mail_iocs.txt
+  recon amsanintel example.com --asn-file asninfo.txt --output amass_intel_domains.txt
+  recon shodan example.com --org example --asn-file asninfo.txt --output shodan_findings.txt
+  recon cidr example.com --asn-file asninfo.txt --cidr-out cidr_hosts.txt --ptr-out cidr_ptr_domains.txt
+  recon uncover example.com --org example --output uncover_hosts.txt
+  recon csp example.com --output csp_domains.txt
+  recon dorks example.com --output dorks_results.txt
+  recon permutations example.com --input all_subs.txt --resolvers resolvers.txt --output permut_resolved.txt
+  recon extractips --input resolved.txt --output resolved_ips.txt
+  recon reverseip --ips resolved_ips.txt --output reverse_ip_domains.txt
+  recon github example.com --org example --token "$GITHUB_TOKEN" --subs-out github_subs.txt --secrets-out github_secrets.json
+  recon crawljs --live live.txt --katana katana_urls.txt --gau gau_urls.txt --all all_urls.txt --sensitive sensitive_files.txt
+  recon params --urls all_urls.txt --output params_found.json --threads 10 --max-targets 50
+  recon jssecrets --urls all_urls.txt --js js_files.txt --exposures js_exposures.txt --secrets secrets.txt
+  recon takeover --input all_subs_merged.txt --nuclei-out takeover_findings.txt --subzy-out subzy_results.txt
+  recon screenshot --live live.txt --output-dir screenshots --threads 10
+  recon cloud example.com --keyword example --cloud-out cloud_findings.txt --s3-out s3_findings.txt
+  recon portscan --hosts resolved.txt --ips resolved_ips.txt --masscan-out masscan_raw.txt --nmap-out nmap_services.xml
+  recon asn root_domains.txt asninfo.txt
+  recon subs example.com --mode stealth
+  recon smartenum --input base_patterns.txt --output smart_wordlist.txt
+  recon bruteforce example.com --wordlist smart_wordlist.txt
+  recon validate --passive all_subs.txt --brute brute_raw.txt --force-resolve
+  recon live --input resolved.txt --output live.txt
+  recon httpxfull --input resolved.txt --output httpx_full.txt --live live.txt --ips resolved_ips.txt --waf-out waf_results.txt --cdn-out cdn_results.txt --ssl-out ssl_results.json
+  recon buildsubs example.com --output subdomains.txt
+  recon buildpaths --output paths.txt
+  recon fuzz example.com --subs subdomains.txt --paths paths.txt
+  recon kiterunner --live live.txt --routes routes-large.kite --output kiterunner_results.txt --threads 10
+  recon all example.com --mode normal --patterns base_patterns.txt --paths paths.txt --force-resolve
+USAGE
+}
+
+show_banner() {
+  if [[ "${SUBHUNTER_NO_BANNER:-0}" == "1" ]]; then
+    return
+  fi
+
+  cat <<'BANNER'
+   _____ _   _ ____  _   _ _   _ _____ _____ ____
+  / ____| | | |  _ \| | | | \ | |_   _|  ___|  _ \
+ | (___ | | | | |_) | |_| |  \| | | | | |__ | |_) |
+  \___ \| | | |  _ <|  _  | . ` | | | |  __||  _ <
+  ____) | |_| | |_) | | | | |\  |_| |_| |___| | \ \
+ |_____/ \___/|____/|_| |_|_| \_|_____|_____|_|  \_\
+BANNER
+}
+
+require_cmd() {
+  local cmd="$1"
+  if [[ "$cmd" == "httpx" ]]; then
+    if ! resolve_httpx_bin >/dev/null 2>&1; then
+      echo "[!] Dependencia ausente ou invalida: httpx (ProjectDiscovery CLI)" >&2
+      return 1
+    fi
+    return 0
+  fi
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "[!] Dependencia ausente: $cmd" >&2
+    return 1
+  fi
+}
+
+HTTPX_BIN=""
+
+resolve_httpx_bin() {
+  if [[ -n "${HTTPX_BIN:-}" && -x "${HTTPX_BIN:-}" ]]; then
+    return 0
+  fi
+
+  local -a candidates=()
+  local path_httpx
+  path_httpx="$(type -P httpx 2>/dev/null || true)"
+  if [[ -n "$path_httpx" ]]; then
+    candidates+=("$path_httpx")
+  fi
+  candidates+=(
+    "/home/c0st4/.pdtm/go/bin/httpx"
+    "/home/c0st4/go/bin/httpx"
+    "/usr/local/bin/httpx"
+  )
+
+  local candidate version_out
+  for candidate in "${candidates[@]}"; do
+    [[ -x "$candidate" ]] || continue
+    version_out="$("$candidate" -version 2>&1 || true)"
+    if [[ "$version_out" == *"pip install 'httpx[cli]'"* ]]; then
+      continue
+    fi
+    if [[ -n "$version_out" ]]; then
+      HTTPX_BIN="$candidate"
+      return 0
+    fi
+  done
+
+  return 1
+}
+
+httpx() {
+  if ! resolve_httpx_bin; then
+    echo "[!] httpx CLI do ProjectDiscovery nao encontrado." >&2
+    return 127
+  fi
+  "$HTTPX_BIN" "$@"
+}
+
+PROGRESS_CURRENT=0
+PROGRESS_TOTAL=0
+
+progress_init() {
+  PROGRESS_CURRENT=0
+  PROGRESS_TOTAL="${1:-0}"
+}
+
+progress_step() {
+  local label="$1"
+  PROGRESS_CURRENT=$((PROGRESS_CURRENT + 1))
+
+  if [[ "$PROGRESS_TOTAL" -le 0 ]]; then
+    echo "[*] ${label}"
+    return
+  fi
+
+  local percent filled empty bar
+  percent=$((PROGRESS_CURRENT * 100 / PROGRESS_TOTAL))
+  filled=$((percent / 5))
+  empty=$((20 - filled))
+  bar="$(printf '%*s' "$filled" '' | tr ' ' '#')$(printf '%*s' "$empty" '' | tr ' ' '-')"
+
+  echo "[${bar}] ${percent}% (${PROGRESS_CURRENT}/${PROGRESS_TOTAL}) ${label}"
+}
+
+anew_or_append() {
+  local target_file="$1"
+  if command -v anew >/dev/null 2>&1; then
+    anew "$target_file"
+  else
+    tee -a "$target_file" > /dev/null
+    sort -u "$target_file" -o "$target_file" 2>/dev/null || true
+  fi
+}
+
+step_doctor() {
+  local -a required_tools=("bash" "curl" "jq" "sort" "awk" "sed" "grep")
+  local -a optional_tools=("subfinder" "assetfinder" "findomain" "amass" "chaos" "bbot" "puredns" "unfurl" "ffuf" "dig" "whois" "openssl" "httpx" "dnsrecon" "dnsgen" "altdns" "alterx" "dnsx" "hakip2host" "github-subdomains" "trufflehog" "gitleaks" "katana" "gospider" "gau" "waybackurls" "waymore" "uro" "anew" "arjun" "nuclei" "subzy" "jsluice" "mantra" "wafw00f" "cdncheck" "testssl.sh" "EyeWitness.py" "eyewitness" "googler" "pagodo" "shodan" "uncover" "ldns-walk" "nsec3map" "feroxbuster" "gf" "gotator" "cloudbrute" "mapcidr" "asnmap" "naabu" "masscan" "nmap" "python3" "s3scanner" "getJS" "kr" "cvemap")
+  local missing_required=0
+
+  echo "[*] Checagem de ambiente (doctor)"
+  echo "[*] Ferramentas obrigatorias:"
+  local tool
+  for tool in "${required_tools[@]}"; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      echo "  [OK] $tool"
+    else
+      echo "  [ERRO] $tool"
+      missing_required=1
+    fi
+  done
+
+  echo "[*] Ferramentas opcionais:"
+  for tool in "${optional_tools[@]}"; do
+    if command -v "$tool" >/dev/null 2>&1; then
+      echo "  [OK] $tool"
+    else
+      echo "  [MISS] $tool"
+    fi
+  done
+
+  echo "[*] Versoes das ferramentas principais:"
+  local tool_check tool_name tool_flag version
+  for tool_check in "nuclei --version" "httpx -version" "subfinder -version" "naabu -version" "bbot --version"; do
+    tool_name=$(echo "$tool_check" | awk '{print $1}')
+    tool_flag=$(echo "$tool_check" | awk '{print $2}')
+    if command -v "$tool_name" >/dev/null 2>&1; then
+      version=$("$tool_name" "$tool_flag" 2>&1 | head -1 | grep -oE '[0-9]+\.[0-9]+(\.[0-9]+)?' | head -1 || echo "desconhecida")
+      echo "  [v] $tool_name: $version"
+    fi
+  done
+
+  if [[ -f "resolvers.txt" ]]; then
+    echo "  [OK] resolvers.txt"
+  else
+    echo "  [MISS] resolvers.txt (necessario para puredns)"
+  fi
+
+  if [[ -f "paths.txt" ]]; then
+    echo "  [OK] paths.txt"
+  else
+    echo "  [MISS] paths.txt (necessario para fuzz)"
+  fi
+
+  if [[ "$missing_required" -eq 1 ]]; then
+    echo "[!] Ambiente incompleto para execucao total."
+    return 1
+  fi
+
+  echo "[*] Ambiente minimo pronto."
+}
+
+step_root() {
+  local target="$1"
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon root <dominio>" >&2
+    return 1
+  fi
+
+  require_cmd curl
+  require_cmd jq
+  require_cmd awk
+
+  echo "[1/5] Extraindo keyword base..."
+  local keyword
+  keyword=$(echo "$target" | awk -F. '{print $1}')
+
+  echo "[1/5] Buscando certificados no crt.sh..."
+  curl -s "https://crt.sh/?q=%25${keyword}%25&output=json" \
+    | jq -r '.[].name_value' 2>/dev/null \
+    | grep -Eo '([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})' \
+    | sed 's/^\*\.//' \
+    | sed 's/\.$//' \
+    | sed 's/^\.//' \
+    | sort -u > .all_domains_tmp || true
+
+  echo "[1/5] Extraindo root domains..."
+  awk -F. '
+  {
+    n = NF
+    if (n == 2) {
+      print $0
+    }
+    else if (n >= 3) {
+      if ($(n-1) == "com" || $(n-1) == "net" || $(n-1) == "org") {
+        print $(n-2)"."$(n-1)"."$n
+      } else {
+        print $(n-1)"."$n
+      }
+    }
+  }
+  ' .all_domains_tmp | sort -u > root_domains.txt
+
+  rm -f .all_domains_tmp
+
+  echo "[1/5] Root domains salvos em root_domains.txt"
+  cat root_domains.txt
+}
+
+step_reverse_whois() {
+  local target="$1"
+  local output="${2:-reverse_whois_domains.txt}"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon reversewhois <dominio> [--output reverse_whois_domains.txt]" >&2
+    return 1
+  fi
+
+  local keyword
+  keyword=$(echo "$target" | awk -F. '{print $1}')
+
+  if [[ -z "${WHOXY_API_KEY:-}" ]]; then
+    echo "[!] WHOXY_API_KEY nao definido. Pulando reverse WHOIS."
+    return 0
+  fi
+
+  : > "$output"
+
+  curl -s "https://api.whoxy.com/?key=${WHOXY_API_KEY}&reverse=whois&company=${keyword}" \
+    | jq -r '.search_result[]?.domain_name?' 2>/dev/null >> "$output" || true
+
+  local registrant_email
+  registrant_email=$(whois "$target" 2>/dev/null | grep -i "registrant.*email" | grep -oE '[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}' | head -1 || true)
+  if [[ -n "$registrant_email" ]]; then
+    curl -s "https://api.whoxy.com/?key=${WHOXY_API_KEY}&reverse=whois&email=${registrant_email}" \
+      | jq -r '.search_result[]?.domain_name?' 2>/dev/null >> "$output" || true
+  fi
+
+  sort -u "$output" -o "$output" 2>/dev/null || true
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[2/6] Reverse WHOIS finalizado: $output (${total} dominios)"
+  echo "[2/6] Revise manualmente os dominios para confirmar escopo."
+}
+
+step_dns_recon() {
+  local target="$1"
+  local output="${2:-dnsrecon.txt}"
+  local axfr_output="${3:-dnsrecon_axfr.txt}"
+  local nsec_out="${output%.txt}_nsec.txt"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon dnsrecon <dominio> [--output dnsrecon.txt] [--axfr-output dnsrecon_axfr.txt]" >&2
+    return 1
+  fi
+
+  require_cmd dnsrecon
+
+  echo "[2/6] DNSRecon: tentativa de zone transfer (AXFR)..."
+  dnsrecon -d "$target" -t axfr > "$axfr_output" 2>/dev/null || true
+
+  echo "[2/6] DNSRecon: enumeracao de registros DNS..."
+  dnsrecon -d "$target" -t std > "$output" 2>/dev/null || true
+
+  local dnssec_enabled
+  dnssec_enabled=$(dig +dnssec DNSKEY "$target" 2>/dev/null | grep -c 'DNSKEY' || echo 0)
+  if [[ "$dnssec_enabled" -gt 0 ]]; then
+    if command -v ldns-walk >/dev/null 2>&1; then
+      ldns-walk "@$(dig +short NS "$target" | head -1)" "$target" 2>/dev/null > "$nsec_out" || true
+    elif command -v nsec3map >/dev/null 2>&1; then
+      nsec3map -v -o "$nsec_out" "$target" 2>/dev/null || true
+    fi
+
+    if [[ -f "$nsec_out" ]]; then
+      grep -oE "([a-zA-Z0-9._-]+\\.)+${target//./\\.}" "$nsec_out" | sed 's/^\*\.//' | anew_or_append all_subs.txt || true
+      local nsec_total
+      nsec_total=$(wc -l < "$nsec_out" 2>/dev/null || echo 0)
+      echo "[2/6] NSEC walking finalizado: $nsec_out (${nsec_total} registros)"
+    fi
+  else
+    echo "[2/6] DNSSEC nao detectado em $target. Pulando NSEC walking."
+  fi
+
+  # Aproveita descobertas do dnsrecon no pool de subdominios.
+  cat "$axfr_output" "$output" 2>/dev/null | \
+    grep -Eo "([a-zA-Z0-9._-]+\\.)+${target//./\\.}" \
+    | sed 's/^\*\.//' \
+    | anew_or_append all_subs.txt || true
+
+  local total_axfr total_std
+  total_axfr=$(wc -l < "$axfr_output" 2>/dev/null || echo 0)
+  total_std=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[2/6] DNSRecon finalizado: $axfr_output (${total_axfr} linhas), $output (${total_std} linhas)"
+}
+
+step_mail_recon() {
+  local target="$1"
+  local output="${2:-dns_mail.txt}"
+  local ioc_output="${3:-dns_mail_iocs.txt}"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon mailrecon <dominio> [--output dns_mail.txt] [--ioc-output dns_mail_iocs.txt]" >&2
+    return 1
+  fi
+
+  require_cmd dig
+
+  : > "$output"
+  : > "$ioc_output"
+
+  echo "[2/6] Coletando registros MX/TXT/DMARC..."
+
+  {
+    echo "### TARGET: $target"
+    echo "### MX"
+    dig +short MX "$target"
+    echo
+    echo "### TXT ($target)"
+    dig +short TXT "$target"
+    echo
+    echo "### DMARC (_dmarc.$target)"
+    dig +short TXT "_dmarc.$target"
+  } >> "$output" 2>/dev/null || true
+
+  # IOCs uteis para relatorio (IPs, dominios e servicos de terceiros).
+  grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' "$output" >> "$ioc_output" || true
+  grep -Eo '([a-zA-Z0-9._-]+\.[a-zA-Z]{2,})' "$output" >> "$ioc_output" || true
+  sort -u "$ioc_output" -o "$ioc_output" || true
+
+  # Subdominios do proprio alvo encontrados em MX/TXT/DMARC entram no pool.
+  grep -Eo "([a-zA-Z0-9._-]+\\.)+${target//./\\.}" "$output" \
+    | sed 's/^\*\.//' \
+    | anew_or_append all_subs.txt || true
+
+  local total_records total_iocs
+  total_records=$(wc -l < "$output" 2>/dev/null || echo 0)
+  total_iocs=$(wc -l < "$ioc_output" 2>/dev/null || echo 0)
+  echo "[2/6] Mail recon finalizado: $output (${total_records} linhas), $ioc_output (${total_iocs} IOCs)"
+}
+
+step_csp_mining() {
+  local target="$1"
+  local output="${2:-csp_domains.txt}"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon csp <dominio> [--output csp_domains.txt]" >&2
+    return 1
+  fi
+
+  require_cmd curl
+
+  echo "[2/6] CSP header mining em https://${target} ..."
+  curl -sI "https://${target}" \
+    | grep -i content-security-policy \
+    | grep -oE '[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}' \
+    | sort -u > "$output" || true
+
+  # Aproveita no pool de subdominios apenas o que pertence ao alvo.
+  if [[ -f "$output" ]]; then
+    grep -E "([a-zA-Z0-9._-]+\.)?${target//./\\.}$" "$output" \
+      | sed 's/^\*\.//' \
+      | anew_or_append all_subs.txt || true
+  fi
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[2/6] CSP mining finalizado: $output (${total} dominios)"
+}
+
+step_dorks() {
+  local target="$1"
+  local output="${2:-dorks_results.txt}"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon dorks <dominio> [--output dorks_results.txt]" >&2
+    return 1
+  fi
+
+  local dork_engine=""
+  if command -v googler >/dev/null 2>&1; then
+    require_cmd googler
+    dork_engine="googler"
+  elif command -v pagodo >/dev/null 2>&1 || [[ -f "pagodo.py" ]]; then
+    dork_engine="pagodo"
+    if command -v pagodo >/dev/null 2>&1; then
+      require_cmd pagodo
+    else
+      require_cmd python3
+    fi
+  else
+    echo "[!] Nem googler nem pagodo disponiveis para dorks." >&2
+    return 1
+  fi
+
+  local dorks=(
+    "site:${target} filetype:env OR filetype:sql OR filetype:log OR filetype:conf"
+    "site:${target} inurl:\"/admin\" OR inurl:\"/dashboard\" OR inurl:\"/portal\" OR inurl:\"/internal\""
+    "site:${target} ext:bak OR ext:old OR ext:backup OR ext:swp"
+    "site:${target} inurl:\"api/v1\" OR inurl:\"api/v2\" OR inurl:\"graphql\" OR inurl:\"swagger\""
+    "site:${target} \"DB_PASSWORD\" OR \"API_KEY\" OR \"SECRET_KEY\" OR \"token\""
+    "site:${target} inurl:\"/.git\" OR inurl:\"/.env\" OR inurl:\"/.htaccess\""
+  )
+
+  : > "$output"
+  echo "[2/6] Executando Google Dorks com ${dork_engine}..."
+  local dork
+  for dork in "${dorks[@]}"; do
+    if [[ "$dork_engine" == "googler" ]]; then
+      googler --count 10 --json "$dork" 2>/dev/null >> "$output" || true
+    else
+      if command -v pagodo >/dev/null 2>&1; then
+        pagodo -g "$dork" -s -e 5 2>/dev/null >> "$output" || true
+      else
+        python3 pagodo.py -g "$dork" -s -e 5 2>/dev/null >> "$output" || true
+      fi
+    fi
+  done
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[2/6] Dorks finalizado: $output (${total} linhas)"
+}
+
+step_permutations() {
+  local target="$1"
+  local input="${2:-all_subs.txt}"
+  local resolvers="${3:-resolvers.txt}"
+  local candidates="${4:-permut_candidates.txt}"
+  local output="${5:-permut_resolved.txt}"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon permutations <dominio> [--input all_subs.txt] [--resolvers resolvers.txt] [--candidates permut_candidates.txt] [--output permut_resolved.txt]" >&2
+    return 1
+  fi
+  if [[ ! -f "$input" ]]; then
+    echo "[!] Arquivo nao encontrado: $input" >&2
+    return 1
+  fi
+  if [[ ! -f "$resolvers" ]]; then
+    echo "[!] Arquivo de resolvers nao encontrado: $resolvers" >&2
+    return 1
+  fi
+  if ! command -v alterx >/dev/null 2>&1 && ! command -v dnsgen >/dev/null 2>&1 && ! command -v altdns >/dev/null 2>&1; then
+    echo "[!] Instale alterx, dnsgen ou altdns para rodar permutations." >&2
+    return 1
+  fi
+  require_cmd puredns
+
+  local tmp_candidates
+  tmp_candidates=$(mktemp)
+
+  echo "[4/6] Gerando permutacoes (alterx/dnsgen/altdns)..."
+  if command -v alterx >/dev/null 2>&1; then
+    cat "$input" | alterx 2>/dev/null >> "$tmp_candidates" || true
+  fi
+
+  if command -v dnsgen >/dev/null 2>&1; then
+    cat "$input" | dnsgen - 2>/dev/null >> "$tmp_candidates" || true
+  fi
+
+  if command -v altdns >/dev/null 2>&1; then
+    local tmp_words
+    tmp_words=$(mktemp)
+    cat > "$tmp_words" <<'EOF'
+dev
+test
+staging
+stage
+qa
+uat
+hml
+prod
+api
+internal
+admin
+old
+new
+beta
+EOF
+    altdns -i "$input" -o "${tmp_candidates}.altdns" -w "$tmp_words" 2>/dev/null || true
+    cat "${tmp_candidates}.altdns" >> "$tmp_candidates" 2>/dev/null || true
+    rm -f "$tmp_words" "${tmp_candidates}.altdns"
+  fi
+
+  tr '[:upper:]' '[:lower:]' < "$tmp_candidates" \
+    | grep -E "([a-zA-Z0-9._-]+\.)+${target//./\\.}$" \
+    | sed 's/^\*\.//' \
+    | sort -u > "$candidates" || true
+  rm -f "$tmp_candidates"
+
+  local total_candidates
+  total_candidates=$(wc -l < "$candidates" 2>/dev/null || echo 0)
+  echo "[4/6] Candidatos gerados: $candidates (${total_candidates})"
+
+  if [[ "$total_candidates" -gt 0 ]]; then
+    puredns resolve "$candidates" -r "$resolvers" -w "$output" >/dev/null 2>&1 || true
+  else
+    : > "$output"
+  fi
+
+  # Mescla no inventario para etapas seguintes.
+  cat "$output" 2>/dev/null | anew_or_append all_subs.txt || true
+
+  local total_resolved
+  total_resolved=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[4/6] Permutations resolvido: $output (${total_resolved})"
+}
+
+step_extract_ips() {
+  local input="${1:-resolved.txt}"
+  local output="${2:-resolved_ips.txt}"
+
+  if [[ ! -f "$input" ]]; then
+    echo "[!] Arquivo nao encontrado: $input" >&2
+    return 1
+  fi
+
+  require_cmd dnsx
+  require_cmd sort
+
+  echo "[6/6] Extraindo IPs unicos com dnsx..."
+  dnsx -l "$input" -a -resp-only 2>/dev/null | sort -u > "$output"
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[6/6] IPs unicos salvos em: $output (${total})"
+}
+
+step_reverse_ip() {
+  local ips_file="${1:-resolved_ips.txt}"
+  local output="${2:-reverse_ip_domains.txt}"
+
+  if [[ ! -f "$ips_file" ]]; then
+    echo "[!] Arquivo de IPs nao encontrado: $ips_file" >&2
+    return 1
+  fi
+
+  require_cmd hakip2host
+
+  echo "[6/6] Reverse IP lookup com hakip2host..."
+  cat "$ips_file" | hakip2host | sort -u > "$output" || true
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[6/6] Reverse IP finalizado: $output (${total} dominios)"
+}
+
+step_github() {
+  local target="$1"
+  local org_name="${2:-}"
+  local token="${3:-${GITHUB_TOKEN:-}}"
+  local subs_out="${4:-github_subs.txt}"
+  local secrets_out="${5:-github_secrets.json}"
+  local cfor_out="${secrets_out%.json}_cfor.json"
+  local workflows_out="${secrets_out%.json}_workflows.txt"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon github <dominio> [--org org_name] [--token GITHUB_TOKEN] [--subs-out github_subs.txt] [--secrets-out github_secrets.json]" >&2
+    return 1
+  fi
+
+  if [[ -z "$org_name" ]]; then
+    org_name=$(echo "$target" | awk -F. '{print $1}')
+  fi
+
+  : > "$subs_out"
+  : > "$secrets_out"
+
+  if [[ -z "$token" ]]; then
+    echo "[!] GITHUB_TOKEN nao informado; pulando github-subdomains e trufflehog." >&2
+    return 0
+  fi
+
+  echo "[6/6] GitHub recon para dominio: $target | org: $org_name"
+
+  # github-subdomains: subdominios vazados em codigo publico.
+  if command -v github-subdomains >/dev/null 2>&1; then
+    github-subdomains -d "$target" -t "$token" -o "$subs_out" >/dev/null 2>&1 || true
+  else
+    echo "[!] github-subdomains ausente." >> "$subs_out"
+  fi
+
+  # trufflehog: secrets em repos da organizacao.
+  if command -v trufflehog >/dev/null 2>&1; then
+    trufflehog github --org="$org_name" --token="$token" --only-verified --json > "$secrets_out" 2>/dev/null || true
+  else
+    echo "{\"warning\":\"trufflehog ausente\"}" > "$secrets_out"
+  fi
+
+  # BLOCO 1 — CFOR (Cross-Fork Object Reference)
+  : > "$cfor_out"
+  if command -v trufflehog >/dev/null 2>&1 && [[ -n "$token" ]]; then
+    trufflehog github --org="$org_name" --token="$token" --object-discovery --only-verified --json > "$cfor_out" 2>/dev/null || true
+  fi
+
+  if command -v gitleaks >/dev/null 2>&1; then
+    gitleaks detect --source . --report-path "${secrets_out%.json}_gitleaks.json" -q 2>/dev/null || true
+  fi
+
+  local cfor_total
+  cfor_total=$(wc -l < "$cfor_out" 2>/dev/null || echo 0)
+  echo "[6/6] CFOR finalizado: $cfor_out (${cfor_total} findings)"
+
+  # BLOCO 2 — CI/CD Workflow scanning
+  : > "$workflows_out"
+  if [[ -n "$token" ]]; then
+    curl -s -H "Authorization: Bearer ${token}" \
+      "https://api.github.com/orgs/${org_name}/repos?per_page=100" 2>/dev/null | \
+      jq -r '.[].full_name?' 2>/dev/null | while read -r repo; do
+        [[ -z "$repo" ]] && continue
+        curl -s -H "Authorization: Bearer ${token}" \
+          "https://api.github.com/repos/${repo}/contents/.github/workflows" 2>/dev/null | \
+          jq -r '.[].download_url?' 2>/dev/null | while read -r wf_url; do
+            [[ -z "$wf_url" ]] && continue
+            curl -s "$wf_url" 2>/dev/null | grep -E '(SECRET|TOKEN|PASSWORD|KEY|CREDENTIAL)\s*[:=]' >> "$workflows_out" || true
+          done
+      done
+  fi
+
+  local workflows_total
+  workflows_total=$(wc -l < "$workflows_out" 2>/dev/null || echo 0)
+  echo "[6/6] Workflow scan finalizado: $workflows_out (${workflows_total} linhas suspeitas)"
+
+  # Mescla subdominios do github-subdomains no inventario.
+  if [[ -f "$subs_out" ]]; then
+    cat "$subs_out" \
+      | tr '[:upper:]' '[:lower:]' \
+      | grep -E "([a-zA-Z0-9._-]+\.)+${target//./\\.}$" \
+      | sed 's/^\*\.//' \
+      | anew_or_append all_subs.txt || true
+  fi
+
+  local total_subs total_secrets
+  total_subs=$(wc -l < "$subs_out" 2>/dev/null || echo 0)
+  total_secrets=$(wc -l < "$secrets_out" 2>/dev/null || echo 0)
+  echo "[6/6] GitHub recon finalizado: $subs_out (${total_subs} linhas), $secrets_out (${total_secrets} linhas)"
+}
+
+step_crawl_js() {
+  local live_file="${1:-live.txt}"
+  local katana_out="${2:-katana_urls.txt}"
+  local gau_out="${3:-gau_urls.txt}"
+  local all_out="${4:-all_urls.txt}"
+  local sensitive_out="${5:-sensitive_files.txt}"
+
+  if [[ ! -f "$live_file" ]]; then
+    echo "[!] Arquivo de alvos vivos nao encontrado: $live_file" >&2
+    return 1
+  fi
+
+  require_cmd sort
+  require_cmd grep
+
+  local targets_file
+  targets_file=$(mktemp)
+  awk '{print $1}' "$live_file" | grep -E '^https?://' | sort -u > "$targets_file" || true
+
+  if [[ ! -s "$targets_file" ]]; then
+    echo "[!] Nenhum alvo HTTP valido encontrado em $live_file" >&2
+    rm -f "$targets_file"
+    return 1
+  fi
+
+  : > "$katana_out"
+  : > "$gau_out"
+
+  echo "[6/6] Crawling ativo (katana + gospider)..."
+  if command -v katana >/dev/null 2>&1; then
+    katana -list "$targets_file" -d 5 -jc -silent -o "$katana_out" >/dev/null 2>&1 || true
+  fi
+
+  if command -v gospider >/dev/null 2>&1; then
+    gospider -S "$targets_file" -d 3 -c 10 --js -q 2>/dev/null | \
+      grep -oE 'https?://[^"]+' >> "$katana_out" || true
+  fi
+  sort -u "$katana_out" -o "$katana_out" || true
+
+  echo "[6/6] URLs historicas (gau + waybackurls)..."
+  if command -v gau >/dev/null 2>&1; then
+    cat "$targets_file" | gau --threads 5 2>/dev/null | sort -u > "$gau_out" || true
+  fi
+  if command -v waybackurls >/dev/null 2>&1; then
+    cat "$targets_file" | waybackurls 2>/dev/null | sort -u >> "$gau_out" || true
+  fi
+  if command -v waymore >/dev/null 2>&1; then
+    cat "$targets_file" | sed 's#https\?://##' | while read -r t; do
+      waymore -i "$t" -mode U -oU /dev/stdout 2>/dev/null >> "$gau_out" || true
+    done
+  fi
+  sort -u "$gau_out" -o "$gau_out" || true
+
+  cat "$gau_out" "$katana_out" 2>/dev/null > "${all_out}.tmp" || true
+  if command -v uro >/dev/null 2>&1; then
+    cat "${all_out}.tmp" | uro 2>/dev/null | sort -u > "$all_out" || true
+  else
+    sort -u "${all_out}.tmp" > "$all_out" || true
+  fi
+  if command -v anew >/dev/null 2>&1; then
+    sort -u "$all_out" -o "$all_out" 2>/dev/null || true
+  fi
+
+  echo "[6/6] Filtrando arquivos sensiveis das URLs..."
+  grep -iE '\.(xls|xlsx|xml|json|pdf|sql|doc|docx|zip|bak|config|conf|yaml|yml|env|log|backup|swp|DS_Store|git|svn)([?#].*)?$' \
+    "$all_out" 2>/dev/null | sort -u > "$sensitive_out" || true
+
+  if [[ -s "$sensitive_out" ]]; then
+    echo "[6/6] Verificando quais arquivos sensiveis ainda respondem..."
+    local sensitive_live_out="${sensitive_out%.txt}_live.txt"
+    cat "$sensitive_out" | httpx -silent -mc 200 -o "$sensitive_live_out" 2>/dev/null || true
+    local s_live
+    s_live=$(wc -l < "$sensitive_live_out" 2>/dev/null || echo 0)
+    echo "[6/6] Arquivos sensiveis vivos: $sensitive_live_out (${s_live})"
+  fi
+
+  local s_total
+  s_total=$(wc -l < "$sensitive_out" 2>/dev/null || echo 0)
+  echo "[6/6] Arquivos sensiveis encontrados: $sensitive_out (${s_total})"
+
+  rm -f "${all_out}.tmp" "$targets_file"
+
+  local t1 t2 t3
+  t1=$(wc -l < "$katana_out" 2>/dev/null || echo 0)
+  t2=$(wc -l < "$gau_out" 2>/dev/null || echo 0)
+  t3=$(wc -l < "$all_out" 2>/dev/null || echo 0)
+  echo "[6/6] Crawl/JS finalizado: $katana_out (${t1}), $gau_out (${t2}), $all_out (${t3})"
+}
+
+step_params() {
+  local urls_file="${1:-all_urls.txt}"
+  local output="${2:-params_found.json}"
+  local threads="${3:-10}"
+  local max_targets="${4:-50}"
+
+  if ! command -v arjun >/dev/null 2>&1; then
+    echo "[!] arjun nao encontrado. Pulando parameter discovery."
+    return 0
+  fi
+
+  if [[ ! -f "$urls_file" ]] || [[ ! -s "$urls_file" ]]; then
+    echo "[!] Arquivo de URLs nao encontrado: $urls_file" >&2
+    return 1
+  fi
+
+  grep -E '^https?://' "$urls_file" \
+    | grep -vE '\.(js|css|png|jpg|jpeg|gif|ico|woff|woff2|svg|map|ttf|eot)([?#].*)?$' \
+    | sort -u \
+    | head -"$max_targets" > /tmp/arjun_targets.txt || true
+
+  if [[ ! -s /tmp/arjun_targets.txt ]]; then
+    echo "[6/6] Nenhum endpoint candidato para arjun."
+    rm -f /tmp/arjun_targets.txt
+    return 0
+  fi
+
+  : > "$output"
+  arjun -i /tmp/arjun_targets.txt \
+    -m GET,POST \
+    -t "$threads" \
+    --passive \
+    -oT "$output" \
+    -q 2>/dev/null || true
+
+  local total
+  total=$(jq -r 'if type=="array" then length else 0 end' "$output" 2>/dev/null || echo 0)
+  if [[ "$total" == "0" ]]; then
+    total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  fi
+  echo "[6/6] Parameter discovery finalizado: $output (${total} entradas)"
+
+  rm -f /tmp/arjun_targets.txt
+}
+
+step_js_secrets() {
+  local urls_file="${1:-all_urls.txt}"
+  local js_files_out="${2:-js_files.txt}"
+  local exposures_out="${3:-js_exposures.txt}"
+  local secrets_out="${4:-secrets.txt}"
+  local templates_dir="${5:-~/nuclei-templates/exposures/}"
+  local secretfinder_path="${6:-SecretFinder.py}"
+  local jsluice_out="${js_files_out%.txt}_jsluice_urls.txt"
+
+  if [[ ! -f "$urls_file" ]]; then
+    echo "[!] Arquivo de URLs nao encontrado: $urls_file" >&2
+    return 1
+  fi
+
+  require_cmd grep
+  require_cmd httpx
+
+  : > "$js_files_out"
+  : > "$exposures_out"
+  : > "$secrets_out"
+
+  echo "[6/6] Extraindo JS vivos..."
+  cat "$urls_file" | grep -E '\\.js([?#].*)?$' | httpx -silent > "$js_files_out" || true
+
+  if command -v getJS >/dev/null 2>&1 && [[ -f "resolved.txt" ]]; then
+    echo "[6/6] Descobrindo JS via getJS..."
+    local getjs_out
+    getjs_out=$(mktemp)
+    cat resolved.txt | getJS --complete 2>/dev/null > "$getjs_out" || true
+    if [[ -s "$getjs_out" ]]; then
+      cat "$getjs_out" | httpx -silent -mc 200 2>/dev/null | anew_or_append "$js_files_out" || true
+    fi
+    rm -f "$getjs_out"
+  fi
+
+  if [[ ! -s "$js_files_out" ]]; then
+    echo "[6/6] Nenhum JS vivo encontrado em $urls_file"
+    return 0
+  fi
+
+  if command -v jsluice >/dev/null 2>&1; then
+    xargs -I{} -a "$js_files_out" jsluice urls {} 2>/dev/null | jq -r '.url' 2>/dev/null | sort -u > "$jsluice_out" || true
+    xargs -I{} -a "$js_files_out" jsluice secrets {} 2>/dev/null | jq -r '.value' 2>/dev/null | sort -u >> "$secrets_out" || true
+    cat "$jsluice_out" 2>/dev/null | anew_or_append all_urls.txt || true
+
+    local jsluice_urls_total jsluice_secrets_total
+    jsluice_urls_total=$(wc -l < "$jsluice_out" 2>/dev/null || echo 0)
+    jsluice_secrets_total=$(wc -l < "$secrets_out" 2>/dev/null || echo 0)
+    echo "[6/6] jsluice finalizado: $jsluice_out (${jsluice_urls_total} urls), $secrets_out (${jsluice_secrets_total} secrets acumulados)"
+  fi
+
+  echo "[6/6] Rodando nuclei (templates exposures)..."
+  if command -v nuclei >/dev/null 2>&1; then
+    # shellcheck disable=SC2086
+    nuclei -l "$js_files_out" -t ${templates_dir} -o "$exposures_out" >/dev/null 2>&1 || true
+  else
+    echo "[!] nuclei ausente." >> "$exposures_out"
+  fi
+
+  echo "[6/6] Rodando SecretFinder..."
+  if command -v python3 >/dev/null 2>&1 && [[ -f "$secretfinder_path" ]]; then
+    python3 "$secretfinder_path" -i "$js_files_out" -o "$secrets_out" >/dev/null 2>&1 || true
+  else
+    echo "[!] SecretFinder.py nao encontrado ou python3 ausente." > "$secrets_out"
+  fi
+
+  local js_endpoints_out="${js_files_out%.txt}_endpoints.txt"
+  echo "[6/6] Extraindo endpoints inline dos arquivos JS..."
+  if [[ -s "$js_files_out" ]]; then
+    while IFS= read -r js_url; do
+      curl -sk "$js_url" 2>/dev/null \
+        | grep -aoP "(?<=[\"'\`])/[a-zA-Z0-9_?&=\\/-#\\.]{3,100}(?=[\"'\`])" \
+        | grep -v "^//" \
+        2>/dev/null >> "$js_endpoints_out" || true
+    done < "$js_files_out"
+    sort -u "$js_endpoints_out" -o "$js_endpoints_out" 2>/dev/null || true
+
+    if [[ -f "paths.txt" ]] && [[ -s "$js_endpoints_out" ]]; then
+      cat "$js_endpoints_out" | sed 's#^/##' | anew_or_append paths.txt || true
+      echo "[6/6] Endpoints JS adicionados ao paths.txt"
+    fi
+  fi
+  local ep_total
+  ep_total=$(wc -l < "$js_endpoints_out" 2>/dev/null || echo 0)
+  echo "[6/6] Endpoints JS extraidos: $js_endpoints_out (${ep_total})"
+
+  local t1 t2 t3
+  t1=$(wc -l < "$js_files_out" 2>/dev/null || echo 0)
+  t2=$(wc -l < "$exposures_out" 2>/dev/null || echo 0)
+  t3=$(wc -l < "$secrets_out" 2>/dev/null || echo 0)
+  echo "[6/6] JS secrets finalizado: $js_files_out (${t1}), $exposures_out (${t2}), $secrets_out (${t3})"
+}
+
+step_takeover() {
+  local input="${1:-all_subs_merged.txt}"
+  local nuclei_out="${2:-takeover_findings.txt}"
+  local subzy_out="${3:-subzy_results.txt}"
+  local templates_dir="${4:-~/nuclei-templates/takeovers/}"
+  local nuclei_vuln_out="${nuclei_out%.txt}_vulns.txt"
+  local nuclei_tech_out="${nuclei_out%.txt}_tech.txt"
+
+  if [[ ! -f "$input" ]]; then
+    echo "[!] Arquivo de subdominios nao encontrado: $input" >&2
+    return 1
+  fi
+
+  : > "$nuclei_out"
+  : > "$subzy_out"
+
+  echo "[6/6] Detectando takeover (nuclei + subzy)..."
+
+  if command -v nuclei >/dev/null 2>&1; then
+    # shellcheck disable=SC2086
+    nuclei -l "$input" -t ${templates_dir} -o "$nuclei_out" -silent >/dev/null 2>&1 || true
+
+    nuclei -l "$input" \
+      -t ~/nuclei-templates/cves/ \
+      -t ~/nuclei-templates/exposures/ \
+      -t ~/nuclei-templates/misconfiguration/ \
+      -severity critical,high,medium \
+      -rate-limit 50 \
+      -bulk-size 25 \
+      -silent \
+      -o "$nuclei_vuln_out" 2>/dev/null || true
+
+    nuclei -l "$input" \
+      -t ~/nuclei-templates/technologies/ \
+      -rate-limit 100 \
+      -silent \
+      -o "$nuclei_tech_out" 2>/dev/null || true
+  else
+    echo "[!] nuclei ausente." >> "$nuclei_out"
+  fi
+
+  if command -v subzy >/dev/null 2>&1; then
+    subzy run --targets "$input" --output "$subzy_out" >/dev/null 2>&1 || true
+  else
+    echo "[!] subzy ausente." >> "$subzy_out"
+  fi
+
+  local t1 t2 t3 t4
+  t1=$(wc -l < "$nuclei_out" 2>/dev/null || echo 0)
+  t2=$(wc -l < "$subzy_out" 2>/dev/null || echo 0)
+  t3=$(wc -l < "$nuclei_vuln_out" 2>/dev/null || echo 0)
+  t4=$(wc -l < "$nuclei_tech_out" 2>/dev/null || echo 0)
+  echo "[6/6] Takeover finalizado: $nuclei_out (${t1}), $subzy_out (${t2}), $nuclei_vuln_out (${t3}), $nuclei_tech_out (${t4})"
+}
+
+step_cloud() {
+  local target="$1"
+  local keyword="${2:-}"
+  local cloud_out="${3:-cloud_findings.txt}"
+  local s3_out="${4:-s3_findings.txt}"
+  local threads="${5:-10}"
+  local disable_azure="${6:-1}"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon cloud <dominio> [--keyword keyword] [--cloud-out cloud_findings.txt] [--s3-out s3_findings.txt] [--threads 10] [--disable-azure]" >&2
+    return 1
+  fi
+
+  if [[ -z "$keyword" ]]; then
+    keyword=$(echo "$target" | awk -F. '{print $1}')
+  fi
+
+  : > "$cloud_out"
+  : > "$s3_out"
+
+  echo "[6/6] Cloud discovery com keyword: $keyword"
+
+  # cloud_enum (AWS/GCP/Azure; com opcao para desabilitar Azure).
+  if command -v python3 >/dev/null 2>&1; then
+    if [[ -f "cloud_enum.py" ]]; then
+      if [[ "$disable_azure" == "1" ]]; then
+        python3 cloud_enum.py -k "$keyword" --disable-azure --threads "$threads" -l "$cloud_out" >/dev/null 2>&1 || true
+      else
+        python3 cloud_enum.py -k "$keyword" --threads "$threads" -l "$cloud_out" >/dev/null 2>&1 || true
+      fi
+    else
+      echo "[!] cloud_enum.py nao encontrado no diretorio atual." >> "$cloud_out"
+    fi
+  else
+    echo "[!] python3 ausente; cloud_enum nao executado." >> "$cloud_out"
+  fi
+
+  # S3Scanner via root_domains.txt (fallback para target quando arquivo nao existir).
+  if command -v s3scanner >/dev/null 2>&1; then
+    local domains_file
+    domains_file=$(mktemp)
+    if [[ -f "root_domains.txt" ]] && [[ -s "root_domains.txt" ]]; then
+      cp "root_domains.txt" "$domains_file"
+    else
+      echo "$target" > "$domains_file"
+    fi
+    s3scanner scan --domains-file "$domains_file" > "$s3_out" 2>/dev/null || true
+    rm -f "$domains_file"
+  else
+    echo "[!] s3scanner ausente; varredura S3 nao executada." >> "$s3_out"
+  fi
+
+  # Extrai potenciais hosts de storage para enriquecer all_subs quando aplicavel.
+  cat "$cloud_out" "$s3_out" 2>/dev/null \
+    | grep -Eo '([a-zA-Z0-9._-]+\.[a-zA-Z]{2,})' \
+    | sort -u > cloud_assets_domains.txt || true
+  if [[ -f cloud_assets_domains.txt ]]; then
+    grep -E "([a-zA-Z0-9._-]+\.)?${target//./\\.}$" cloud_assets_domains.txt \
+      | sed 's/^\*\.//' \
+      | anew_or_append all_subs.txt || true
+  fi
+
+  local total_cloud total_s3
+  total_cloud=$(wc -l < "$cloud_out" 2>/dev/null || echo 0)
+  total_s3=$(wc -l < "$s3_out" 2>/dev/null || echo 0)
+  echo "[6/6] Cloud findings: $cloud_out (${total_cloud} linhas), $s3_out (${total_s3} linhas)"
+}
+
+step_portscan() {
+  local hosts_file="${1:-resolved.txt}"
+  local ips_file="${2:-resolved_ips.txt}"
+  local masscan_out="${3:-masscan_raw.txt}"
+  local nmap_out="${4:-nmap_services.xml}"
+  local rate="${5:-5000}"
+  local wait_time="${6:-0}"
+  local port_range="${7:-1-65535}"
+
+  if [[ ! -f "$ips_file" ]]; then
+    if [[ ! -f "$hosts_file" ]]; then
+      echo "[!] Arquivo de hosts nao encontrado: $hosts_file" >&2
+      return 1
+    fi
+    step_extract_ips "$hosts_file" "$ips_file"
+  fi
+
+  local total_ips
+  total_ips=$(wc -l < "$ips_file" 2>/dev/null || echo 0)
+  if [[ "$total_ips" -eq 0 ]]; then
+    echo "[!] Nenhum IP resolvido em: $ips_file" >&2
+    return 1
+  fi
+
+  if command -v naabu >/dev/null 2>&1; then
+    echo "[6/6] Portscan com naabu (orquestrador) + nmap..."
+    naabu -list "$ips_file" \
+      -p - \
+      -exclude-ports 80,443 \
+      -c 50 \
+      -rate "$rate" \
+      -silent \
+      -nmap-cli "nmap -sV -sC -oX ${nmap_out}" \
+      -o "${masscan_out%.txt}_naabu.txt" 2>/dev/null || true
+
+    naabu -list "$ips_file" \
+      -top-ports 1000 \
+      -silent \
+      -rate "$rate" \
+      -o "$masscan_out" 2>/dev/null || true
+    return 0
+  fi
+
+  require_cmd masscan
+  require_cmd nmap
+
+  echo "[6/6] Portscan fase 1 (masscan): ${total_ips} IPs"
+  local -a masscan_cmd
+  if [[ "${SUBHUNTER_USE_SUDO:-0}" == "1" ]] && command -v sudo >/dev/null 2>&1; then
+    masscan_cmd=(sudo masscan)
+  else
+    masscan_cmd=(masscan)
+  fi
+
+  "${masscan_cmd[@]}" -iL "$ips_file" -p"$port_range" --rate "$rate" --wait "$wait_time" -oG "$masscan_out"
+
+  local ports_csv
+  ports_csv=$(
+    awk '
+      /Ports:/ {
+        n=split($0, arr, "Ports: ")
+        if (n < 2) next
+        m=split(arr[2], p, ",")
+        for (i=1; i<=m; i++) {
+          split(p[i], f, "/")
+          if (f[2] == "open" && f[1] ~ /^[0-9]+$/) print f[1]
+        }
+      }
+    ' "$masscan_out" | sort -un | paste -sd, -
+  )
+
+  if [[ -z "${ports_csv:-}" ]]; then
+    echo "[6/6] Nenhuma porta aberta encontrada pelo masscan; pulando nmap."
+    return 0
+  fi
+
+  echo "[6/6] Portscan fase 2 (nmap): portas ${ports_csv}"
+  nmap -sV -sC -p"$ports_csv" -iL "$ips_file" --open -T4 --min-rate "$rate" --max-retries 1 -oX "$nmap_out"
+  echo "[6/6] Nmap finalizado: $nmap_out"
+}
+
+step_asn() {
+  local input="$1"
+  local output="${2:-}"
+
+  if [[ -z "$input" ]]; then
+    echo "Uso: recon asn <arquivo_dominios> [arquivo_saida]" >&2
+    return 1
+  fi
+  if [[ ! -f "$input" ]]; then
+    echo "[!] Arquivo nao encontrado: $input" >&2
+    return 1
+  fi
+
+  require_cmd dig
+  require_cmd whois
+
+  local tmp
+  tmp=$(mktemp)
+  sort -u "$input" > "$tmp"
+
+  local header="Domain | IP | ASN | AS Name"
+  local sep="-------------------------------------------------------------"
+
+  if [[ -n "$output" ]]; then
+    : > "$output"
+    echo "$header" | tee -a "$output"
+    echo "$sep" | tee -a "$output"
+  else
+    echo "$header"
+    echo "$sep"
+  fi
+
+  while IFS= read -r domain; do
+    local ip
+    ip=$(dig +short "$domain" | grep -Eo '^[0-9.]+$' | head -n1 || true)
+
+    if [[ -z "$ip" ]]; then
+      if [[ -n "$output" ]]; then
+        echo "$domain | Nao resolveu IP" | tee -a "$output"
+      else
+        echo "$domain | Nao resolveu IP"
+      fi
+      continue
+    fi
+
+    local result
+    result=$(whois -h whois.cymru.com -v "$ip" 2>/dev/null | tail -n +2 || true)
+
+    if [[ -n "$result" ]]; then
+      local asn asname
+      asn=$(echo "$result" | awk -F'|' '{print $1}' | xargs)
+      asname=$(echo "$result" | awk -F'|' '{print $7}' | xargs)
+      if [[ -n "$output" ]]; then
+        echo "$domain | $ip | AS$asn | $asname" | tee -a "$output"
+      else
+        echo "$domain | $ip | AS$asn | $asname"
+      fi
+    else
+      if [[ -n "$output" ]]; then
+        echo "$domain | $ip | Sem resposta ASN" | tee -a "$output"
+      else
+        echo "$domain | $ip | Sem resposta ASN"
+      fi
+    fi
+  done < "$tmp"
+
+  rm -f "$tmp"
+}
+
+step_cidr_discovery() {
+  local target="$1"
+  local asn_file="${2:-asninfo.txt}"
+  local cidr_hosts_out="${3:-cidr_hosts.txt}"
+  local cidr_ptr_out="${4:-cidr_ptr_domains.txt}"
+
+  if ! command -v asnmap >/dev/null 2>&1; then
+    echo "[!] asnmap nao encontrado. Pulando CIDR discovery."
+    return 0
+  fi
+
+  asnmap -d "$target" -silent 2>/dev/null > /tmp/cidr_ranges.txt || true
+  if [[ ! -s /tmp/cidr_ranges.txt ]] && [[ -f "$asn_file" ]]; then
+    grep -oE 'AS[0-9]+' "$asn_file" 2>/dev/null | grep -oE '[0-9]+' | while read -r asn; do
+      asnmap -asn "AS${asn}" -silent 2>/dev/null >> /tmp/cidr_ranges.txt || true
+    done
+  fi
+
+  : > /tmp/cidr_ips.txt
+  if command -v mapcidr >/dev/null 2>&1; then
+    cat /tmp/cidr_ranges.txt | mapcidr -silent 2>/dev/null > /tmp/cidr_ips.txt || true
+  else
+    echo "[!] mapcidr ausente; usando ranges sem expansao de IP." >&2
+    cat /tmp/cidr_ranges.txt > /tmp/cidr_ips.txt || true
+  fi
+
+  : > "$cidr_hosts_out"
+  if [[ -s /tmp/cidr_ips.txt ]]; then
+    httpx -l /tmp/cidr_ips.txt \
+      -silent \
+      -status-code \
+      -title \
+      -tech-detect \
+      -random-agent \
+      -o "$cidr_hosts_out" 2>/dev/null || true
+  fi
+
+  : > "$cidr_ptr_out"
+  if command -v dnsx >/dev/null 2>&1 && [[ -s /tmp/cidr_ips.txt ]]; then
+    cat /tmp/cidr_ips.txt | dnsx -silent -ptr -resp-only 2>/dev/null \
+      | grep -Eo "([a-zA-Z0-9._-]+\.)+${target//./\\.}" \
+      | sed 's/^\*\.//' \
+      | sort -u > "$cidr_ptr_out" || true
+    cat "$cidr_ptr_out" | anew_or_append all_subs.txt || true
+  fi
+
+  rm -f /tmp/cidr_ranges.txt /tmp/cidr_ips.txt
+
+  local http_total ptr_total
+  http_total=$(wc -l < "$cidr_hosts_out" 2>/dev/null || echo 0)
+  ptr_total=$(wc -l < "$cidr_ptr_out" 2>/dev/null || echo 0)
+  echo "[2/6] CIDR discovery finalizado: $cidr_hosts_out (${http_total}), $cidr_ptr_out (${ptr_total})"
+}
+
+step_uncover() {
+  local target="$1"
+  local org_name="${2:-}"
+  local output="${3:-uncover_hosts.txt}"
+
+  if [[ -z "$org_name" ]]; then
+    org_name=$(echo "$target" | awk -F. '{print $1}')
+  fi
+
+  if ! command -v uncover >/dev/null 2>&1; then
+    echo "[!] uncover nao encontrado. Pulando uncover."
+    return 0
+  fi
+
+  : > "$output"
+  echo "ssl.cert.subject.cn:\"${target}\"" | uncover -e shodan,censys -silent 2>/dev/null >> "$output" || true
+  echo "org:\"${org_name}\"" | uncover -e shodan -silent 2>/dev/null >> "$output" || true
+  echo "hostname:\"${target}\"" | uncover -e fofa,hunter -silent 2>/dev/null >> "$output" || true
+  sort -u "$output" -o "$output" 2>/dev/null || true
+
+  grep -oE "([a-zA-Z0-9._-]+\.)+${target//./\\.}" "$output" \
+    | sed 's/^\*\.//' \
+    | anew_or_append all_subs.txt || true
+
+  grep -oE '([0-9]{1,3}\.){3}[0-9]{1,3}' "$output" \
+    | sort -u | anew_or_append resolved_ips.txt 2>/dev/null || true
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[2/6] Uncover finalizado: $output (${total} resultados)"
+}
+
+step_amass_intel() {
+  local target="$1"
+  local asn_file="${2:-asninfo.txt}"
+  local output="${3:-amass_intel_domains.txt}"
+
+  if ! command -v amass >/dev/null 2>&1; then
+    return 0
+  fi
+
+  : > "$output"
+
+  if [[ -f "$asn_file" ]]; then
+    grep -oE 'AS[0-9]+' "$asn_file" | grep -oE '[0-9]+' | sort -u > /tmp/asns.txt || true
+    local asn
+    while IFS= read -r asn; do
+      [[ -z "$asn" ]] && continue
+      amass intel -asn "$asn" -passive -norecursive 2>/dev/null >> "$output" || true
+    done < /tmp/asns.txt
+    rm -f /tmp/asns.txt
+  fi
+
+  amass intel -whois -d "$target" -passive 2>/dev/null >> "$output" || true
+
+  sort -u "$output" -o "$output" 2>/dev/null || true
+  echo "[*] ATENCAO: Revise $output antes de adicionar ao escopo — pode incluir dominios fora do programa"
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[2/6] Amass intel finalizado: $output (${total} dominios)"
+}
+
+step_shodan_recon() {
+  local target="$1"
+  local org_name="${2:-}"
+  local asn_file="${3:-asninfo.txt}"
+  local output="${4:-shodan_findings.txt}"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon shodan <dominio> [--org org_name] [--asn-file asninfo.txt] [--output shodan_findings.txt]" >&2
+    return 1
+  fi
+
+  if [[ -z "$org_name" ]]; then
+    org_name=$(echo "$target" | awk -F. '{print $1}')
+  fi
+
+  if [[ -z "${SHODAN_API_KEY:-}" ]]; then
+    echo "[!] SHODAN_API_KEY nao definido. Pulando shodan recon."
+    return 0
+  fi
+
+  : > "$output"
+
+  if command -v shodan >/dev/null 2>&1; then
+    shodan search "ssl.cert.subject.cn:${target}" --fields ip_str,port,hostnames,org --limit 200 2>/dev/null >> "$output" || true
+    shodan search "org:\"${org_name}\"" --fields ip_str,port,hostnames --limit 200 2>/dev/null >> "$output" || true
+
+    if [[ -f "$asn_file" ]]; then
+      awk -F'|' '/AS[0-9]+/ {gsub(/ /,"",$3); print $3}' "$asn_file" 2>/dev/null | sed '/^$/d' | sort -u > .shodan_asn_tmp || true
+      while IFS= read -r asn_prefix; do
+        [[ -z "$asn_prefix" ]] && continue
+        shodan search "net:${asn_prefix}" --fields ip_str,port,hostnames --limit 100 2>/dev/null >> "$output" || true
+      done < .shodan_asn_tmp
+      rm -f .shodan_asn_tmp
+    fi
+
+    grep -oE "([a-zA-Z0-9._-]+\\.)+${target//./\\.}" "$output" | sed 's/^\*\.//' | anew_or_append all_subs.txt || true
+
+    grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' "$output" | sort -u > shodan_ips.txt || true
+  else
+    curl -s "https://api.shodan.io/shodan/host/search?key=${SHODAN_API_KEY}&query=ssl.cert.subject.cn:${target}&minify=true" \
+      | jq -r '.matches[]? | "\(.ip_str):\(.port)"' >> "$output" || true
+  fi
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[2/6] Shodan recon finalizado: $output (${total} hosts)"
+}
+
+step_subs() {
+  local input="$1"
+  local mode="${2:-normal}"
+  local cookie="${3:-}"
+
+  if [[ -z "$input" ]]; then
+    echo "Uso: recon subs <dominio|arquivo.txt> [--mode normal|stealth] [--cookie \"k=v\"]" >&2
+    return 1
+  fi
+
+  require_cmd curl
+  require_cmd jq
+
+  local threads tool_threads
+  if [[ "$mode" == "stealth" ]]; then
+    threads=3
+    tool_threads=25
+    echo "[3/5] Modo stealth ativado."
+  else
+    threads=8
+    tool_threads=100
+    echo "[3/5] Modo normal ativado."
+  fi
+
+  local -a domains=()
+  if [[ -f "$input" ]]; then
+    mapfile -t domains < <(grep -v '^$' "$input" | sort -u)
+  elif [[ "$input" == *.* ]]; then
+    domains=("$input")
+  else
+    echo "[!] Entrada invalida para subdomains: $input" >&2
+    return 1
+  fi
+
+  local cookie_header=""
+  if [[ -n "$cookie" ]]; then
+    cookie_header="Cookie: $cookie"
+  fi
+
+  local tmp
+  tmp=$(mktemp)
+
+  run_passive_domain() {
+    local domain="$1"
+
+    if command -v subfinder >/dev/null 2>&1; then
+      subfinder -d "$domain" -silent -all -t "$tool_threads" 2>/dev/null >> "$tmp" || true
+    fi
+    if command -v assetfinder >/dev/null 2>&1; then
+      assetfinder --subs-only "$domain" 2>/dev/null >> "$tmp" || true
+    fi
+    if command -v findomain >/dev/null 2>&1; then
+      findomain -t "$domain" -q 2>/dev/null >> "$tmp" || true
+    fi
+    if command -v amass >/dev/null 2>&1; then
+      amass enum -passive -d "$domain" -norecursive -noalts 2>/dev/null >> "$tmp" || true
+    fi
+    if command -v chaos >/dev/null 2>&1; then
+      chaos -d "$domain" -silent 2>/dev/null >> "$tmp" || true
+    fi
+    if command -v bbot >/dev/null 2>&1; then
+      local bbot_dir
+      bbot_dir=$(mktemp -d)
+      bbot -t "$domain" -f subdomain-enum --silent -o "$bbot_dir" 2>/dev/null || true
+      find "$bbot_dir" \( -name "*.txt" -o -name "subdomains.txt" \) 2>/dev/null \
+        | xargs cat 2>/dev/null \
+        | grep -Eo "([a-zA-Z0-9._-]+\.)+${domain//./\\.}" \
+        | sed 's/^\*\.//' >> "$tmp" || true
+      rm -rf "$bbot_dir"
+    fi
+
+    if [[ -n "$cookie_header" ]]; then
+      curl -s -H "$cookie_header" "https://crt.sh/?q=%25.$domain&output=json" 2>/dev/null | \
+        jq -r '.[].name_value?' 2>/dev/null | \
+        sed 's/\*\.//g' | grep -i "\.$domain$" >> "$tmp" || true
+    else
+      curl -s "https://crt.sh/?q=%25.$domain&output=json" 2>/dev/null | \
+        jq -r '.[].name_value?' 2>/dev/null | \
+        sed 's/\*\.//g' | grep -i "\.$domain$" >> "$tmp" || true
+    fi
+
+    curl -s "https://dns.bufferover.run/dns?q=.$domain" 2>/dev/null | \
+      jq -r '.FDNS_A[]?' 2>/dev/null | \
+      cut -d',' -f2 >> "$tmp" || true
+
+    curl -s "https://urlscan.io/api/v1/search/?q=domain:$domain" 2>/dev/null | \
+      jq -r '.results[].page.domain?' 2>/dev/null >> "$tmp" || true
+
+    ############################################################
+    # BLOCO 1 — Fontes Passivas Adicionais (GitHub + Wayback)
+    ############################################################
+
+    # Wayback CDX: extrai hosts historicos arquivados.
+    curl -s "https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=text&fl=original&collapse=urlkey" 2>/dev/null | \
+      sed 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##' | \
+      cut -d'/' -f1 | \
+      sed 's/:.*$//' | \
+      sed 's/^\*\.//' | \
+      grep -iE "([a-zA-Z0-9._-]+\.)+${domain//./\\.}$" >> "$tmp" || true
+
+    # GitHub: busca referencias de subdominios em codigo/indexacao.
+    if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+      local page
+      for page in 1 2; do
+        curl -s -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+          -H "Accept: application/vnd.github.text-match+json" \
+          "https://api.github.com/search/code?q=%22.${domain}%22&per_page=100&page=${page}" 2>/dev/null | \
+          jq -r '.items[]?.text_matches[]?.fragment?' 2>/dev/null | \
+          grep -Eo "([a-zA-Z0-9._-]+\\.)+${domain//./\\.}" >> "$tmp" || true
+      done
+    else
+      # Fallback sem token: scraping simples da busca publica.
+      curl -sL "https://github.com/search?q=%22.${domain}%22&type=code" 2>/dev/null | \
+        grep -Eo "([a-zA-Z0-9._-]+\\.)+${domain//./\\.}" >> "$tmp" || true
+    fi
+  }
+
+  local -a pids=()
+  for domain in "${domains[@]}"; do
+    while [[ $(jobs -p | wc -l) -ge $threads ]]; do
+      sleep 1
+    done
+    run_passive_domain "$domain" &
+    pids+=("$!")
+  done
+
+  local pid
+  for pid in "${pids[@]}"; do
+    wait "$pid" || true
+  done
+
+  if [[ -f "all_subs.txt" ]]; then
+    cat all_subs.txt >> "$tmp" || true
+  fi
+
+  tr '[:upper:]' '[:lower:]' < "$tmp" \
+    | grep -E '^[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}$' \
+    | sort -u > all_subs.txt || true
+
+  rm -f "$tmp"
+
+  local total
+  total=$(wc -l < all_subs.txt 2>/dev/null || echo 0)
+  echo "[3/5] Wordlist criada: all_subs.txt (${total} subs)"
+}
+
+step_smartenum() {
+  local input="${1:-base_patterns.txt}"
+  local output="${2:-smart_wordlist.txt}"
+
+  if [[ "$input" == "base_patterns.txt" ]] && [[ -f "resolved.txt" ]] && command -v unfurl >/dev/null 2>&1; then
+    echo "[4/5] Gerando base_patterns.txt a partir de resolved.txt..."
+    cat resolved.txt | unfurl -u domains | sed 's/\..*//' | sort -u > base_patterns.txt
+  elif [[ "$input" == "base_patterns.txt" ]] && [[ -f "all_subs.txt" ]]; then
+    echo "[4/5] Gerando base_patterns.txt a partir de all_subs.txt (fallback)..."
+    sed 's/\..*//' all_subs.txt | sort -u > base_patterns.txt
+  fi
+
+  if [[ ! -f "$input" ]]; then
+    echo "[!] Arquivo nao encontrado: $input" >&2
+    return 1
+  fi
+
+  echo "[4/5] Extraindo prefixos base..."
+  sort -u "$input" > tmp_unique.txt
+
+  echo "[4/5] Detectando ambientes..."
+  grep -E '^(dev|hml|prd|prod|homolog|qa|uat)$' tmp_unique.txt > tmp_envs.txt || true
+
+  if [[ ! -s tmp_envs.txt ]]; then
+    printf "dev\nhml\nprd\nqa\nuat\n" > tmp_envs.txt
+  fi
+
+  echo "[4/5] Detectando padroes numericos finais..."
+  grep -E '[0-9]+$' tmp_unique.txt > tmp_numeric.txt || true
+  sed 's/[0-9]*$//' tmp_numeric.txt | sort -u > tmp_numeric_base.txt
+
+  : > "$output"
+
+  while IFS= read -r base; do
+    [[ -z "$base" ]] && continue
+    local i
+    for i in $(seq -w 001 050); do
+      echo "${base}${i}" >> "$output"
+    done
+  done < tmp_numeric_base.txt
+
+  grep -E '^[a-zA-Z]+[0-9]+-[0-9]+$' tmp_unique.txt > tmp_pm.txt || true
+
+  while IFS= read -r line; do
+    [[ -z "$line" ]] && continue
+    local prefix
+    prefix=$(echo "$line" | sed -E 's/-[0-9]+$//')
+    local i
+    for i in $(seq 1 20); do
+      echo "${prefix}-${i}" >> "$output"
+    done
+  done < tmp_pm.txt
+
+  echo "[4/5] Detectando servicos principais..."
+  awk -F'-' '{print $1}' tmp_unique.txt | sort | uniq -c | sort -nr | awk '$1 > 2 {print $2}' > tmp_services.txt
+
+  local service env
+  while IFS= read -r service; do
+    [[ -z "$service" ]] && continue
+    while IFS= read -r env; do
+      [[ -z "$env" ]] && continue
+      echo "${service}-${env}" >> "$output"
+      echo "${env}-${service}" >> "$output"
+    done < tmp_envs.txt
+  done < tmp_services.txt
+
+  if grep -qE '^vpn-[a-z]$' tmp_unique.txt; then
+    local c
+    for c in {a..z}; do
+      echo "vpn-$c" >> "$output"
+    done
+  fi
+
+  if grep -qE '^www[0-9]*$' tmp_unique.txt; then
+    local n
+    for n in $(seq 1 10); do
+      echo "www$n" >> "$output"
+    done
+  fi
+
+  sort -u "$output" -o "$output"
+  rm -f tmp_unique.txt tmp_envs.txt tmp_numeric.txt tmp_numeric_base.txt tmp_pm.txt tmp_services.txt
+
+  echo "[4/5] Wordlist inteligente gerada em: $output"
+  wc -l "$output"
+}
+
+step_bruteforce() {
+  local target="$1"
+  local wordlist="${2:-smart_wordlist.txt}"
+  local resolvers="${3:-resolvers.txt}"
+  local rate_limit="${4:-1000}"
+  local wildcard_tests="${5:-50}"
+  local wildcard_batch="${6:-1000000}"
+  local output="${7:-brute_raw.txt}"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon bruteforce <dominio> [--wordlist smart_wordlist.txt] [--resolvers resolvers.txt] [--rate-limit 1000] [--wildcard-tests 50] [--wildcard-batch 1000000] [--output brute_raw.txt]" >&2
+    return 1
+  fi
+
+  require_cmd puredns
+
+  if [[ ! -f "$wordlist" ]]; then
+    echo "[!] Wordlist nao encontrada: $wordlist" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$resolvers" ]]; then
+    echo "[!] Arquivo de resolvers nao encontrado: $resolvers" >&2
+    return 1
+  fi
+
+  echo "[5/6] Iniciando puredns bruteforce..."
+  puredns bruteforce "$wordlist" "$target" \
+    -r "$resolvers" \
+    --rate-limit "$rate_limit" \
+    --wildcard-tests "$wildcard_tests" \
+    --wildcard-batch "$wildcard_batch" \
+    -w "$output" || true
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[5/6] Bruteforce finalizado: $output (${total} entradas)"
+}
+
+step_merge_validate() {
+  local passive_file="${1:-all_subs.txt}"
+  local brute_file="${2:-brute_raw.txt}"
+  local merged_file="${3:-all_subs_merged.txt}"
+  local resolvers="${4:-resolvers.txt}"
+  local output="${5:-resolved.txt}"
+  local force_resolve="${6:-0}"
+
+  require_cmd sort
+
+  if [[ ! -f "$passive_file" ]] && [[ ! -f "$brute_file" ]]; then
+    echo "[!] Nenhuma fonte encontrada para validar hosts (passive/brute)." >&2
+    return 1
+  fi
+
+  : > "$merged_file"
+  if [[ -f "$passive_file" ]]; then
+    cat "$passive_file" >> "$merged_file"
+  fi
+  if [[ -f "$brute_file" ]]; then
+    cat "$brute_file" >> "$merged_file"
+  fi
+
+  tr '[:upper:]' '[:lower:]' < "$merged_file" \
+    | grep -E '^[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}$' \
+    | sort -u > "${merged_file}.tmp" || true
+  mv "${merged_file}.tmp" "$merged_file"
+
+  local total_merged
+  total_merged=$(wc -l < "$merged_file" 2>/dev/null || echo 0)
+  echo "[6/6] Lista unificada criada: $merged_file (${total_merged} hosts)"
+
+  if [[ -f "$resolvers" ]] && command -v puredns >/dev/null 2>&1; then
+    if [[ -s "$output" && "$force_resolve" != "1" ]]; then
+      echo "[+] $output ja existe, pulando resolucao (use --force-resolve para refazer)"
+      return 0
+    fi
+    echo "[6/6] Validando hosts ativos com puredns resolve..."
+    puredns resolve "$merged_file" -r "$resolvers" -w "$output" >/dev/null 2>&1 || true
+    local total_resolved
+    if [[ -f "$output" ]]; then
+      total_resolved=$(wc -l < "$output" 2>/dev/null || echo 0)
+    else
+      total_resolved=0
+    fi
+    echo "[6/6] Validacao finalizada: $output (${total_resolved} ativos)"
+  else
+    echo "[6/6] resolvers.txt ou puredns ausente. Pulando validacao de hosts."
+  fi
+}
+
+step_build_subdomains() {
+  local target="$1"
+  local output="${2:-subdomains.txt}"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon buildsubs <dominio> [--output subdomains.txt]" >&2
+    return 1
+  fi
+
+  local tmp_hosts tmp_labels
+  tmp_hosts=$(mktemp)
+  tmp_labels=$(mktemp)
+
+  # Fontes que ja vieram das etapas anteriores.
+  for src in resolved.txt all_subs_merged.txt all_subs.txt brute_raw.txt; do
+    if [[ -f "$src" ]]; then
+      cat "$src" >> "$tmp_hosts"
+    fi
+  done
+
+  # Extraindo labels dos subdominios ja descobertos para o alvo.
+  if [[ -s "$tmp_hosts" ]]; then
+    awk -v target="$target" '
+      {
+        d=tolower($0)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", d)
+        gsub(/^\*\./, "", d)
+        gsub(/\.$/, "", d)
+        if (d == "" || d == target) next
+
+        suffix="." target
+        if (length(d) > length(suffix) && substr(d, length(d)-length(suffix)+1) == suffix) {
+          sub("\\." target "$", "", d)
+          n=split(d, p, ".")
+          if (n >= 1 && p[1] ~ /^[a-z0-9][a-z0-9-]*$/) print p[1]
+        }
+      }
+    ' "$tmp_hosts" >> "$tmp_labels"
+  fi
+
+  # Aproveita seeds das listas ja geradas no pipeline.
+  for src in smart_wordlist.txt base_patterns.txt; do
+    if [[ -f "$src" ]]; then
+      cat "$src" >> "$tmp_labels"
+    fi
+  done
+
+  tr '[:upper:]' '[:lower:]' < "$tmp_labels" \
+    | sed 's/^\*\.\?//' \
+    | sed 's/\..*//' \
+    | grep -E '^[a-z0-9][a-z0-9-]{0,62}$' \
+    | sort -u > "${output}.seed" || true
+
+  : > "$output"
+  cat "${output}.seed" >> "$output"
+
+  # Expansao inteligente com base no que foi observado.
+  grep -E '[0-9]+$' "${output}.seed" | sed 's/[0-9]*$//' | sort -u > "${output}.numeric_base" || true
+  while IFS= read -r base; do
+    [[ -z "$base" ]] && continue
+    for i in $(seq -w 001 050); do
+      echo "${base}${i}" >> "$output"
+    done
+  done < "${output}.numeric_base"
+
+  grep -E '^(dev|hml|prd|prod|homolog|qa|uat|stg|stage|test)$' "${output}.seed" > "${output}.envs" || true
+  if [[ ! -s "${output}.envs" ]]; then
+    printf "dev\nhml\nprd\nqa\nuat\nstg\ntest\n" > "${output}.envs"
+  fi
+
+  awk -F'[-_]' '{print $1}' "${output}.seed" | sort | uniq -c | sort -nr | awk '$1 > 1 {print $2}' > "${output}.services"
+  while IFS= read -r service; do
+    [[ -z "$service" ]] && continue
+    while IFS= read -r env; do
+      [[ -z "$env" ]] && continue
+      echo "${service}-${env}" >> "$output"
+      echo "${env}-${service}" >> "$output"
+    done < "${output}.envs"
+  done < "${output}.services"
+
+  sort -u "$output" -o "$output"
+  rm -f "$tmp_hosts" "$tmp_labels" "${output}.seed" "${output}.numeric_base" "${output}.envs" "${output}.services"
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[6/6] Wordlist inteligente de subdominios gerada: $output (${total} entradas)"
+}
+
+step_build_paths() {
+  local output="${1:-paths.txt}"
+  local tmp_terms tmp_paths
+  tmp_terms=$(mktemp)
+  tmp_paths=$(mktemp)
+
+  # Base de caminhos comuns de alta utilidade.
+  cat > "$tmp_paths" <<'EOF'
+/
+admin
+login
+logout
+signin
+auth
+oauth
+sso
+api
+api/v1
+api/v2
+graphql
+swagger
+swagger-ui
+openapi
+docs
+redoc
+health
+healthz
+ready
+metrics
+status
+debug
+actuator
+version
+robots.txt
+sitemap.xml
+.well-known/security.txt
+.well-known/openid-configuration
+dashboard
+panel
+portal
+internal
+intranet
+monitor
+prometheus
+kibana
+grafana
+jenkins
+gitlab
+sonarqube
+adminer
+phpmyadmin
+backup
+backups
+db
+database
+upload
+uploads
+download
+downloads
+files
+tmp
+dev
+test
+staging
+homolog
+qa
+prod
+EOF
+
+  # Termos inferidos dos artefatos gerados anteriormente.
+  for src in base_patterns.txt smart_wordlist.txt subdomains.txt all_subs.txt all_subs_merged.txt resolved.txt brute_raw.txt; do
+    if [[ -f "$src" ]]; then
+      cat "$src" >> "$tmp_terms"
+    fi
+  done
+
+  if [[ -f "results/path_fuzz.json" ]] && command -v jq >/dev/null 2>&1; then
+    jq -r '.results[]?.input?.FUZZ?' results/path_fuzz.json 2>/dev/null >> "$tmp_terms" || true
+  fi
+
+  tr '[:upper:]' '[:lower:]' < "$tmp_terms" \
+    | sed 's/^\*\.\?//' \
+    | sed 's#https\?://##g' \
+    | sed 's#/.*##' \
+    | sed 's/\..*//' \
+    | tr '._' '-' \
+    | sed 's/[^a-z0-9-]//g' \
+    | grep -E '^[a-z0-9][a-z0-9-]{1,30}$' \
+    | sort -u > "${output}.terms" || true
+
+  if [[ -s "${output}.terms" ]]; then
+    cat "${output}.terms" >> "$tmp_paths"
+
+    # Expande em namespaces e versões comuns.
+    while IFS= read -r t; do
+      [[ -z "$t" ]] && continue
+      echo "$t/api" >> "$tmp_paths"
+      echo "$t/admin" >> "$tmp_paths"
+      echo "$t/login" >> "$tmp_paths"
+      echo "$t/v1" >> "$tmp_paths"
+      echo "$t/v2" >> "$tmp_paths"
+      echo "api/$t" >> "$tmp_paths"
+      echo "internal/$t" >> "$tmp_paths"
+      echo "v1/$t" >> "$tmp_paths"
+      echo "v2/$t" >> "$tmp_paths"
+    done < "${output}.terms"
+  fi
+
+  tr '[:upper:]' '[:lower:]' < "$tmp_paths" \
+    | tr -d '\r' \
+    | sed 's#^/*##' \
+    | sed 's#[^a-z0-9._/-]##g' \
+    | sed 's#//*#/#g' \
+    | sed 's#^/##' \
+    | sed 's#/$##' \
+    | grep -v '^$' \
+    | sort -u > "$output"
+
+  rm -f "$tmp_terms" "$tmp_paths" "${output}.terms"
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[6/6] Wordlist inteligente de paths gerada: $output (${total} entradas)"
+}
+
+step_live_hosts() {
+  local input="${1:-resolved.txt}"
+  local output="${2:-live.txt}"
+  local nuclei_tech_out="${output%.txt}_nuclei_tech.txt"
+
+  if [[ ! -f "$input" ]]; then
+    echo "[!] Arquivo nao encontrado: $input" >&2
+    return 1
+  fi
+
+  require_cmd httpx
+
+  echo "[6/6] Verificando hosts vivos com httpx..."
+  cat "$input" | httpx -silent -status-code -title -tech-detect -o "$output" || true
+
+  if command -v nuclei >/dev/null 2>&1 && [[ -f "$output" ]]; then
+    nuclei -l "$output" \
+      -t ~/nuclei-templates/technologies/ \
+      -t ~/nuclei-templates/misconfiguration/ \
+      -o "$nuclei_tech_out" \
+      -silent \
+      -rate-limit 50 \
+      2>/dev/null || true
+
+    local nuclei_total
+    nuclei_total=$(wc -l < "$nuclei_tech_out" 2>/dev/null || echo 0)
+    echo "[6/6] Nuclei tech/misconfig finalizado: $nuclei_tech_out (${nuclei_total} findings)"
+  fi
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[6/6] Hosts vivos salvos em: $output (${total} entradas)"
+}
+
+step_httpx_full() {
+  local input="${1:-resolved.txt}"
+  local output="${2:-httpx_full.txt}"
+  local live_file="${3:-live.txt}"
+  local ips_file="${4:-resolved_ips.txt}"
+  local waf_out="${5:-waf_results.txt}"
+  local cdn_out="${6:-cdn_results.txt}"
+  local ssl_out="${7:-ssl_results.json}"
+  local favicon_out="${output%.txt}_favicons.txt"
+
+  if [[ ! -f "$input" ]]; then
+    echo "[!] Arquivo nao encontrado: $input" >&2
+    return 1
+  fi
+
+  require_cmd httpx
+
+  echo "[6/6] Coletando fingerprint HTTP completo com httpx..."
+  httpx -list "$input" \
+    -status-code \
+    -content-length \
+    -content-type \
+    -line-count \
+    -title \
+    -body-preview \
+    -server \
+    -tech-detect \
+    -probe-all-ips \
+    -include-response \
+    -follow-host-redirects \
+    -random-agent \
+    -o "$output" || true
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[6/6] Saida completa do httpx salva em: $output (${total} linhas)"
+
+  # Extração de favicon hash + correlação com Shodan
+  if command -v httpx >/dev/null 2>&1 && [[ -f "$live_file" ]]; then
+    httpx -list "$live_file" -favicon -hash sha256 -silent -o "$favicon_out" 2>/dev/null || true
+    grep -oE 'sha256:[a-f0-9]+' "$favicon_out" | sort -u > "${favicon_out%.txt}_hashes.txt" || true
+
+    if command -v shodan >/dev/null 2>&1; then
+      : > "${favicon_out%.txt}_shodan.txt"
+      while IFS= read -r hash; do
+        [[ -z "$hash" ]] && continue
+        shodan search "http.favicon.hash:$hash" --fields ip_str,port,hostnames 2>/dev/null >> "${favicon_out%.txt}_shodan.txt" || true
+      done < "${favicon_out%.txt}_hashes.txt"
+
+      local shodan_total
+      shodan_total=$(wc -l < "${favicon_out%.txt}_shodan.txt" 2>/dev/null || echo 0)
+      echo "[6/6] Favicon/Shodan finalizado: ${favicon_out%.txt}_shodan.txt (${shodan_total} resultados)"
+    else
+      echo "[6/6] shodan CLI ausente. Use manualmente: https://www.shodan.io/search?query=http.favicon.hash:<HASH>"
+    fi
+  fi
+
+  # Etapa 15: WAF/CDN detection
+  : > "$waf_out"
+  : > "$cdn_out"
+
+  if command -v wafw00f >/dev/null 2>&1 && [[ -f "$live_file" ]]; then
+    echo "[6/6] Detectando WAF com wafw00f..."
+    wafw00f -i "$live_file" -o "$waf_out" -f json >/dev/null 2>&1 || true
+  else
+    echo "[!] wafw00f ausente ou arquivo live nao encontrado: $live_file" >> "$waf_out"
+  fi
+
+  if command -v cdncheck >/dev/null 2>&1 && [[ -f "$ips_file" ]]; then
+    echo "[6/6] Detectando CDN com cdncheck..."
+    cdncheck -l "$ips_file" -o "$cdn_out" >/dev/null 2>&1 || true
+  else
+    echo "[!] cdncheck ausente ou arquivo de IPs nao encontrado: $ips_file" >> "$cdn_out"
+  fi
+
+  : > "$ssl_out"
+  if command -v testssl.sh >/dev/null 2>&1 && [[ -f "$live_file" ]]; then
+    echo "[6/6] Testando SSL/TLS com testssl.sh..."
+    testssl.sh --file "$live_file" --jsonfile "$ssl_out" --quiet >/dev/null 2>&1 || true
+  else
+    echo "[!] testssl.sh ausente ou arquivo live nao encontrado: $live_file" > "$ssl_out"
+  fi
+
+  local waf_total cdn_total ssl_total
+  waf_total=$(wc -l < "$waf_out" 2>/dev/null || echo 0)
+  cdn_total=$(wc -l < "$cdn_out" 2>/dev/null || echo 0)
+  ssl_total=$(wc -l < "$ssl_out" 2>/dev/null || echo 0)
+  echo "[6/6] WAF/CDN/SSL finalizado: $waf_out (${waf_total}), $cdn_out (${cdn_total}), $ssl_out (${ssl_total})"
+}
+
+step_screenshot() {
+  local live_file="${1:-live.txt}"
+  local output_dir="${2:-screenshots}"
+  local threads="${3:-10}"
+
+  if [[ ! -f "$live_file" ]]; then
+    echo "[!] Arquivo de alvos vivos nao encontrado: $live_file" >&2
+    return 1
+  fi
+
+  local eyewitness_bin=""
+  if command -v EyeWitness.py >/dev/null 2>&1; then
+    eyewitness_bin="EyeWitness.py"
+  elif command -v eyewitness >/dev/null 2>&1; then
+    eyewitness_bin="eyewitness"
+  else
+    echo "[!] EyeWitness nao encontrado (EyeWitness.py/eyewitness)." >&2
+    return 1
+  fi
+
+  local targets_file
+  targets_file=$(mktemp)
+  awk '{print $1}' "$live_file" | grep -E '^https?://' | sort -u > "$targets_file" || true
+
+  if [[ ! -s "$targets_file" ]]; then
+    echo "[!] Nenhum alvo HTTP valido encontrado em $live_file" >&2
+    rm -f "$targets_file"
+    return 1
+  fi
+
+  mkdir -p "$output_dir"
+  echo "[6/6] Gerando screenshots com EyeWitness..."
+  "$eyewitness_bin" --web -f "$targets_file" --threads "$threads" --no-prompt -d "$output_dir" >/dev/null 2>&1 || true
+  rm -f "$targets_file"
+  echo "[6/6] Screenshots finalizados em: $output_dir"
+}
+
+step_fuzz() {
+  local target="$1"
+  local wordlist_subs="${2:-subdomains.txt}"
+  local wordlist_paths="${3:-paths.txt}"
+  local threads="${4:-80}"
+  local results_dir="${5:-results}"
+
+  if [[ -z "$target" ]]; then
+    echo "Uso: recon fuzz <dominio> [--subs subdomains.txt] [--paths paths.txt] [--threads 80] [--results results]" >&2
+    return 1
+  fi
+
+  require_cmd curl
+  require_cmd ffuf
+  require_cmd openssl
+
+  if [[ ! -f "$wordlist_subs" ]]; then
+    echo "[!] Wordlist de subdominios nao encontrada: $wordlist_subs" >&2
+    return 1
+  fi
+
+  if [[ ! -f "$wordlist_paths" ]]; then
+    echo "[!] Wordlist de paths nao encontrada: $wordlist_paths" >&2
+    return 1
+  fi
+
+  mkdir -p "$results_dir"
+
+  echo "[5/5] Detectando tamanho base HTTP..."
+  local base_size random_size filter
+  base_size=$(curl -s -o /dev/null -w "%{size_download}" "http://${target}" || echo 0)
+  random_size=$(curl -s -o /dev/null -w "%{size_download}" -H "Host: $(openssl rand -hex 6).${target}" "http://${target}" || echo 0)
+
+  echo "[5/5] Tamanho base: $base_size"
+  echo "[5/5] Tamanho wildcard: $random_size"
+
+  if [[ "$base_size" == "$random_size" ]]; then
+    echo "[5/5] Wildcard detectado, aplicando filtro por tamanho"
+    filter=("-fs" "$base_size")
+  else
+    echo "[5/5] Sem wildcard detectado"
+    filter=()
+  fi
+
+  echo "[5/5] Iniciando VHost discovery..."
+  ffuf -w "$wordlist_subs" \
+    -u "http://${target}" \
+    -H "Host: FUZZ.${target}" \
+    "${filter[@]}" \
+    -mc 200,301,302,403 \
+    -t "$threads" \
+    -o "${results_dir}/vhosts.json" -of json
+
+  echo "[5/5] Iniciando API subdomain fuzz..."
+  ffuf -w "$wordlist_subs" \
+    -u "https://FUZZ.api.${target}" \
+    -mc 200,301,302,403 \
+    -t "$threads" \
+    -o "${results_dir}/api_prefix.json" -of json
+
+  ffuf -w "$wordlist_subs" \
+    -u "https://api.FUZZ.${target}" \
+    -mc 200,301,302,403 \
+    -t "$threads" \
+    -o "${results_dir}/api_namespace.json" -of json
+
+  echo "[5/5] Iniciando Path fuzzing..."
+  ffuf -w "$wordlist_paths" \
+    -u "https://${target}/FUZZ" \
+    -mc 200,301,302,403 \
+    -t "$threads" \
+    -o "${results_dir}/path_fuzz.json" -of json
+
+  echo "[5/5] Fuzzing finalizado."
+  echo "[5/5] Resultados em ./${results_dir}/"
+}
+
+step_kiterunner() {
+  local live_file="${1:-live.txt}"
+  local routes_file="${2:-routes-large.kite}"
+  local output="${3:-kiterunner_results.txt}"
+  local threads="${4:-10}"
+
+  if ! command -v kr >/dev/null 2>&1; then
+    return 0
+  fi
+  if [[ ! -f "$live_file" ]]; then
+    echo "[!] Arquivo nao encontrado: $live_file" >&2
+    return 1
+  fi
+  if [[ ! -f "$routes_file" ]]; then
+    echo "[*] routes-large.kite nao encontrado. Baixe em: https://github.com/assetnote/kiterunner"
+    echo "[*] Tentando com routes-small.kite..."
+    routes_file="routes-small.kite"
+    if [[ ! -f "$routes_file" ]]; then
+      echo "[!] Nenhum arquivo .kite encontrado. Pulando kiterunner." >&2
+      return 0
+    fi
+  fi
+
+  awk '{print $1}' "$live_file" \
+    | grep -E '^https?://' \
+    | sed -E 's#(https?://[^/]+).*#\1#' \
+    | sort -u > /tmp/kr_targets.txt
+
+  kr scan /tmp/kr_targets.txt \
+    -w "$routes_file" \
+    -j "$threads" \
+    --ignore-length=34 \
+    -o "$output" 2>/dev/null || true
+
+  rm -f /tmp/kr_targets.txt
+
+  local total
+  total=$(wc -l < "$output" 2>/dev/null || echo 0)
+  echo "[6/6] Kiterunner finalizado: $output (${total} endpoints)"
+}
+
+run_all_pipeline_for_target() {
+  local target="$1"
+  local mode="$2"
+  local cookie="$3"
+  local patterns="$4"
+  local subs="$5"
+  local paths="$6"
+  local threads="$7"
+  local force_resolve="${8:-0}"
+
+  local target_id
+  target_id=$(echo "$target" | tr -c 'a-zA-Z0-9._-' '_')
+
+  echo "[*] Iniciando pipeline para: $target"
+  progress_init 33
+
+  progress_step "Root domain discovery"
+  step_root "$target"
+  progress_step "Reverse WHOIS (linked discovery)"
+  step_reverse_whois "$target" "reverse_whois_domains.txt"
+  progress_step "DNS recon (AXFR + registros)"
+  step_dns_recon "$target" "dnsrecon.txt" "dnsrecon_axfr.txt"
+  progress_step "Mail recon (SPF/MX/DMARC/TXT)"
+  step_mail_recon "$target" "dns_mail.txt" "dns_mail_iocs.txt"
+  progress_step "CSP header mining"
+  step_csp_mining "$target" "csp_domains.txt"
+  progress_step "Google Dorks"
+  step_dorks "$target" "dorks_results.txt"
+  progress_step "Cloud asset discovery"
+  step_cloud "$target" "" "cloud_findings.txt" "s3_findings.txt" "10" "1"
+  progress_step "ASN enrichment"
+  if [[ -s root_domains.txt ]]; then
+    step_asn root_domains.txt asninfo.txt
+    echo "[3/6] ASN salvo em asninfo.txt"
+  else
+    echo "[3/6] root_domains.txt vazio, pulando ASN"
+  fi
+  progress_step "CIDR expansion (ASN -> HTTP hosts)"
+  step_cidr_discovery "$target" "asninfo.txt" "cidr_hosts.txt" "cidr_ptr_domains.txt"
+  progress_step "Amass intel (ASN expansion)"
+  step_amass_intel "$target" "asninfo.txt" "amass_intel_domains.txt"
+  progress_step "Uncover (Shodan/Censys/Fofa pivot)"
+  step_uncover "$target" "$(echo "$target" | awk -F. '{print $1}')" "uncover_hosts.txt"
+
+  progress_step "Subdomain passive collection"
+  step_subs "$target" "$mode" "$cookie"
+  progress_step "Subdomain permutations"
+  step_permutations "$target" "all_subs.txt" "resolvers.txt" "permut_candidates.txt" "permut_resolved.txt"
+  progress_step "Smart wordlist generation"
+  step_smartenum "$patterns" "smart_wordlist.txt"
+  progress_step "Bruteforce DNS"
+  step_bruteforce "$target" "smart_wordlist.txt" "resolvers.txt" "1000" "50" "1000000" "brute_raw.txt"
+  progress_step "Merge + validate DNS"
+  step_merge_validate "all_subs.txt" "brute_raw.txt" "all_subs_merged.txt" "resolvers.txt" "resolved.txt" "$force_resolve"
+  progress_step "Subfinder recursive (second pass)"
+  if command -v subfinder >/dev/null 2>&1 && [[ -f "resolved.txt" ]] && [[ -s "resolved.txt" ]]; then
+    echo "[*] Segunda passada: subfinder recursivo sobre subdominios resolvidos..."
+    subfinder -dL resolved.txt -all -recursive -silent 2>/dev/null | anew_or_append all_subs.txt || true
+    local new_count
+    new_count=$(wc -l < all_subs.txt 2>/dev/null || echo 0)
+    echo "[*] Subfinder recursivo finalizado. Total all_subs.txt: ${new_count}"
+  fi
+
+  # Paralelizacao 1: takeover + extração de IPs + live probe
+  progress_step "Subdomain takeover checks"
+  step_takeover "all_subs_merged.txt" "takeover_findings.txt" "subzy_results.txt" "~/nuclei-templates/takeovers/" &
+  pid_takeover=$!
+  progress_step "Extract unique IPs"
+  step_extract_ips "resolved.txt" "resolved_ips.txt" &
+  pid_extract=$!
+  progress_step "Live host probing"
+  step_live_hosts "resolved.txt" "live.txt" &
+  pid_live=$!
+
+  wait "$pid_extract" || true
+  progress_step "Reverse IP lookup"
+  step_reverse_ip "resolved_ips.txt" "reverse_ip_domains.txt"
+  progress_step "GitHub / secrets recon"
+  step_github "$target" "" "${GITHUB_TOKEN:-}" "github_subs.txt" "github_secrets.json"
+  progress_step "Port scanning (naabu/masscan + nmap)"
+  step_portscan "resolved.txt" "resolved_ips.txt" "masscan_raw.txt" "nmap_services.xml" "5000" "0" "1-65535"
+
+  wait "$pid_takeover" || true
+  wait "$pid_live" || true
+
+  # Paralelizacao 2: screenshots + fingerprint HTTP/WAF/CDN/SSL
+  progress_step "Screenshots"
+  step_screenshot "live.txt" "screenshots" "10" &
+  pid_screenshot=$!
+  progress_step "HTTP/WAF/CDN/SSL fingerprint"
+  step_httpx_full "resolved.txt" "httpx_full.txt" "live.txt" "resolved_ips.txt" "waf_results.txt" "cdn_results.txt" "ssl_results.json" &
+  pid_httpx=$!
+  wait "$pid_screenshot" || true
+  wait "$pid_httpx" || true
+
+  progress_step "Crawling + historical URLs"
+  step_crawl_js "live.txt" "katana_urls.txt" "gau_urls.txt" "all_urls.txt" "sensitive_files.txt"
+  progress_step "Parameter discovery (arjun)"
+  step_params "all_urls.txt" "params_found.json" "10" "50"
+  progress_step "JS secrets + exposures"
+  step_js_secrets "all_urls.txt" "js_files.txt" "js_exposures.txt" "secrets.txt" "~/nuclei-templates/exposures/" "SecretFinder.py"
+  progress_step "Shodan SSL/org pivot"
+  step_shodan_recon "$target" "$(echo "$target" | awk -F. '{print $1}')" "asninfo.txt" "shodan_findings.txt"
+  progress_step "Build subdomain wordlist"
+  step_build_subdomains "$target" "$subs"
+  progress_step "Build path wordlist"
+  step_build_paths "$paths"
+  progress_step "Fuzzing"
+  step_fuzz "$target" "$subs" "$paths" "$threads" "results/${target_id}"
+  progress_step "Kiterunner (API routes brute-force)"
+  step_kiterunner "live.txt" "routes-large.kite" "kiterunner_results.txt" "10"
+
+  mkdir -p "results/${target_id}"
+  cp -f root_domains.txt "results/${target_id}/root_domains.txt" 2>/dev/null || true
+  cp -f reverse_whois_domains.txt "results/${target_id}/reverse_whois_domains.txt" 2>/dev/null || true
+  cp -f dnsrecon.txt "results/${target_id}/dnsrecon.txt" 2>/dev/null || true
+  cp -f dnsrecon_axfr.txt "results/${target_id}/dnsrecon_axfr.txt" 2>/dev/null || true
+  cp -f dns_mail.txt "results/${target_id}/dns_mail.txt" 2>/dev/null || true
+  cp -f dns_mail_iocs.txt "results/${target_id}/dns_mail_iocs.txt" 2>/dev/null || true
+  cp -f csp_domains.txt "results/${target_id}/csp_domains.txt" 2>/dev/null || true
+  cp -f dorks_results.txt "results/${target_id}/dorks_results.txt" 2>/dev/null || true
+  cp -f uncover_hosts.txt "results/${target_id}/uncover_hosts.txt" 2>/dev/null || true
+  cp -f shodan_findings.txt "results/${target_id}/shodan_findings.txt" 2>/dev/null || true
+  cp -f shodan_ips.txt "results/${target_id}/shodan_ips.txt" 2>/dev/null || true
+  cp -f cidr_hosts.txt "results/${target_id}/cidr_hosts.txt" 2>/dev/null || true
+  cp -f cidr_ptr_domains.txt "results/${target_id}/cidr_ptr_domains.txt" 2>/dev/null || true
+  cp -f amass_intel_domains.txt "results/${target_id}/amass_intel_domains.txt" 2>/dev/null || true
+  cp -f cloud_findings.txt "results/${target_id}/cloud_findings.txt" 2>/dev/null || true
+  cp -f s3_findings.txt "results/${target_id}/s3_findings.txt" 2>/dev/null || true
+  cp -f cloud_assets_domains.txt "results/${target_id}/cloud_assets_domains.txt" 2>/dev/null || true
+  cp -f permut_candidates.txt "results/${target_id}/permut_candidates.txt" 2>/dev/null || true
+  cp -f permut_resolved.txt "results/${target_id}/permut_resolved.txt" 2>/dev/null || true
+  cp -f resolved_ips.txt "results/${target_id}/resolved_ips.txt" 2>/dev/null || true
+  cp -f reverse_ip_domains.txt "results/${target_id}/reverse_ip_domains.txt" 2>/dev/null || true
+  cp -f github_subs.txt "results/${target_id}/github_subs.txt" 2>/dev/null || true
+  cp -f github_secrets.json "results/${target_id}/github_secrets.json" 2>/dev/null || true
+  cp -f github_secrets_cfor.json "results/${target_id}/github_secrets_cfor.json" 2>/dev/null || true
+  cp -f github_secrets_gitleaks.json "results/${target_id}/github_secrets_gitleaks.json" 2>/dev/null || true
+  cp -f github_secrets_workflows.txt "results/${target_id}/github_secrets_workflows.txt" 2>/dev/null || true
+  cp -f katana_urls.txt "results/${target_id}/katana_urls.txt" 2>/dev/null || true
+  cp -f gau_urls.txt "results/${target_id}/gau_urls.txt" 2>/dev/null || true
+  cp -f all_urls.txt "results/${target_id}/all_urls.txt" 2>/dev/null || true
+  cp -f sensitive_files.txt "results/${target_id}/sensitive_files.txt" 2>/dev/null || true
+  cp -f sensitive_files_live.txt "results/${target_id}/sensitive_files_live.txt" 2>/dev/null || true
+  cp -f params_found.json "results/${target_id}/params_found.json" 2>/dev/null || true
+  cp -f js_files.txt "results/${target_id}/js_files.txt" 2>/dev/null || true
+  cp -f js_files_endpoints.txt "results/${target_id}/js_files_endpoints.txt" 2>/dev/null || true
+  cp -f js_exposures.txt "results/${target_id}/js_exposures.txt" 2>/dev/null || true
+  cp -f secrets.txt "results/${target_id}/secrets.txt" 2>/dev/null || true
+  cp -f masscan_raw.txt "results/${target_id}/masscan_raw.txt" 2>/dev/null || true
+  cp -f nmap_services.xml "results/${target_id}/nmap_services.xml" 2>/dev/null || true
+  cp -f asninfo.txt "results/${target_id}/asninfo.txt" 2>/dev/null || true
+  cp -f all_subs.txt "results/${target_id}/all_subs.txt" 2>/dev/null || true
+  cp -f smart_wordlist.txt "results/${target_id}/smart_wordlist.txt" 2>/dev/null || true
+  cp -f brute_raw.txt "results/${target_id}/brute_raw.txt" 2>/dev/null || true
+  cp -f all_subs_merged.txt "results/${target_id}/all_subs_merged.txt" 2>/dev/null || true
+  cp -f takeover_findings.txt "results/${target_id}/takeover_findings.txt" 2>/dev/null || true
+  cp -f takeover_findings_vulns.txt "results/${target_id}/takeover_findings_vulns.txt" 2>/dev/null || true
+  cp -f takeover_findings_tech.txt "results/${target_id}/takeover_findings_tech.txt" 2>/dev/null || true
+  cp -f subzy_results.txt "results/${target_id}/subzy_results.txt" 2>/dev/null || true
+  cp -f resolved.txt "results/${target_id}/resolved.txt" 2>/dev/null || true
+  cp -f live.txt "results/${target_id}/live.txt" 2>/dev/null || true
+  cp -f live_nuclei_tech.txt "results/${target_id}/live_nuclei_tech.txt" 2>/dev/null || true
+  cp -f httpx_full.txt "results/${target_id}/httpx_full.txt" 2>/dev/null || true
+  cp -f waf_results.txt "results/${target_id}/waf_results.txt" 2>/dev/null || true
+  cp -f cdn_results.txt "results/${target_id}/cdn_results.txt" 2>/dev/null || true
+  cp -f ssl_results.json "results/${target_id}/ssl_results.json" 2>/dev/null || true
+  mkdir -p "results/${target_id}/screenshots"
+  cp -r screenshots/. "results/${target_id}/screenshots/" 2>/dev/null || true
+  cp -f "$subs" "results/${target_id}/subdomains.txt" 2>/dev/null || true
+  cp -f "$paths" "results/${target_id}/paths.txt" 2>/dev/null || true
+  cp -f kiterunner_results.txt "results/${target_id}/kiterunner_results.txt" 2>/dev/null || true
+
+  echo "[*] Pipeline finalizado para: $target (saida em results/${target_id}/)"
+}
+
+cmd="${1:-}"
+[[ $# -gt 0 ]] && shift || true
+
+show_banner
+
+case "$cmd" in
+  tools|doctor)
+    step_doctor
+    ;;
+  root)
+    step_root "${1:-}"
+    ;;
+  reversewhois)
+    target="${1:-}"
+    shift || true
+    output="reverse_whois_domains.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_reverse_whois "$target" "$output"
+    ;;
+  asn)
+    step_asn "${1:-}" "${2:-}"
+    ;;
+  amsanintel)
+    target="${1:-}"
+    shift || true
+    asn_file="asninfo.txt"
+    output="amass_intel_domains.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --asn-file)
+          asn_file="${2:-$asn_file}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_amass_intel "$target" "$asn_file" "$output"
+    ;;
+  shodan)
+    target="${1:-}"
+    shift || true
+    org_name=""
+    asn_file="asninfo.txt"
+    output="shodan_findings.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --org)
+          org_name="${2:-$org_name}"
+          shift 2
+          ;;
+        --asn-file)
+          asn_file="${2:-$asn_file}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_shodan_recon "$target" "$org_name" "$asn_file" "$output"
+    ;;
+  cidr)
+    target="${1:-}"
+    shift || true
+    asn_file="asninfo.txt"
+    cidr_out="cidr_hosts.txt"
+    ptr_out="cidr_ptr_domains.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --asn-file)
+          asn_file="${2:-$asn_file}"
+          shift 2
+          ;;
+        --cidr-out)
+          cidr_out="${2:-$cidr_out}"
+          shift 2
+          ;;
+        --ptr-out)
+          ptr_out="${2:-$ptr_out}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_cidr_discovery "$target" "$asn_file" "$cidr_out" "$ptr_out"
+    ;;
+  uncover)
+    target="${1:-}"
+    shift || true
+    org_name=""
+    output="uncover_hosts.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --org)
+          org_name="${2:-$org_name}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_uncover "$target" "$org_name" "$output"
+    ;;
+  dnsrecon)
+    target="${1:-}"
+    shift || true
+    output="dnsrecon.txt"
+    axfr_output="dnsrecon_axfr.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        --axfr-output)
+          axfr_output="${2:-$axfr_output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_dns_recon "$target" "$output" "$axfr_output"
+    ;;
+  mailrecon)
+    target="${1:-}"
+    shift || true
+    output="dns_mail.txt"
+    ioc_output="dns_mail_iocs.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        --ioc-output)
+          ioc_output="${2:-$ioc_output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_mail_recon "$target" "$output" "$ioc_output"
+    ;;
+  csp)
+    target="${1:-}"
+    shift || true
+    output="csp_domains.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_csp_mining "$target" "$output"
+    ;;
+  dorks)
+    target="${1:-}"
+    shift || true
+    output="dorks_results.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_dorks "$target" "$output"
+    ;;
+  cloud)
+    target="${1:-}"
+    shift || true
+    keyword=""
+    cloud_out="cloud_findings.txt"
+    s3_out="s3_findings.txt"
+    threads="10"
+    disable_azure="0"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --keyword)
+          keyword="${2:-$keyword}"
+          shift 2
+          ;;
+        --cloud-out)
+          cloud_out="${2:-$cloud_out}"
+          shift 2
+          ;;
+        --s3-out)
+          s3_out="${2:-$s3_out}"
+          shift 2
+          ;;
+        --threads)
+          threads="${2:-$threads}"
+          shift 2
+          ;;
+        --disable-azure)
+          disable_azure="1"
+          shift 1
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_cloud "$target" "$keyword" "$cloud_out" "$s3_out" "$threads" "$disable_azure"
+    ;;
+  github)
+    target="${1:-}"
+    shift || true
+    org_name=""
+    token="${GITHUB_TOKEN:-}"
+    subs_out="github_subs.txt"
+    secrets_out="github_secrets.json"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --org)
+          org_name="${2:-$org_name}"
+          shift 2
+          ;;
+        --token)
+          token="${2:-$token}"
+          shift 2
+          ;;
+        --subs-out)
+          subs_out="${2:-$subs_out}"
+          shift 2
+          ;;
+        --secrets-out)
+          secrets_out="${2:-$secrets_out}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_github "$target" "$org_name" "$token" "$subs_out" "$secrets_out"
+    ;;
+  subs)
+    input="${1:-}"
+    shift || true
+    mode="normal"
+    cookie=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --mode)
+          mode="${2:-normal}"
+          shift 2
+          ;;
+        --cookie)
+          cookie="${2:-}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_subs "$input" "$mode" "$cookie"
+    ;;
+  smartenum)
+    input="base_patterns.txt"
+    output="smart_wordlist.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --input)
+          input="${2:-$input}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_smartenum "$input" "$output"
+    ;;
+  bruteforce)
+    target="${1:-}"
+    shift || true
+    wordlist="smart_wordlist.txt"
+    resolvers="resolvers.txt"
+    rate_limit=1000
+    wildcard_tests=50
+    wildcard_batch=1000000
+    output="brute_raw.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --wordlist)
+          wordlist="${2:-$wordlist}"
+          shift 2
+          ;;
+        --resolvers)
+          resolvers="${2:-$resolvers}"
+          shift 2
+          ;;
+        --rate-limit)
+          rate_limit="${2:-$rate_limit}"
+          shift 2
+          ;;
+        --wildcard-tests)
+          wildcard_tests="${2:-$wildcard_tests}"
+          shift 2
+          ;;
+        --wildcard-batch)
+          wildcard_batch="${2:-$wildcard_batch}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_bruteforce "$target" "$wordlist" "$resolvers" "$rate_limit" "$wildcard_tests" "$wildcard_batch" "$output"
+    ;;
+  permutations)
+    target="${1:-}"
+    shift || true
+    input="all_subs.txt"
+    resolvers="resolvers.txt"
+    candidates="permut_candidates.txt"
+    output="permut_resolved.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --input)
+          input="${2:-$input}"
+          shift 2
+          ;;
+        --resolvers)
+          resolvers="${2:-$resolvers}"
+          shift 2
+          ;;
+        --candidates)
+          candidates="${2:-$candidates}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_permutations "$target" "$input" "$resolvers" "$candidates" "$output"
+    ;;
+  validate)
+    passive_file="all_subs.txt"
+    brute_file="brute_raw.txt"
+    merged_file="all_subs_merged.txt"
+    resolvers="resolvers.txt"
+    output="resolved.txt"
+    force_resolve="0"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --passive)
+          passive_file="${2:-$passive_file}"
+          shift 2
+          ;;
+        --brute)
+          brute_file="${2:-$brute_file}"
+          shift 2
+          ;;
+        --merged)
+          merged_file="${2:-$merged_file}"
+          shift 2
+          ;;
+        --resolvers)
+          resolvers="${2:-$resolvers}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        --force-resolve)
+          force_resolve="1"
+          shift 1
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_merge_validate "$passive_file" "$brute_file" "$merged_file" "$resolvers" "$output" "$force_resolve"
+    ;;
+  extractips)
+    input="resolved.txt"
+    output="resolved_ips.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --input)
+          input="${2:-$input}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_extract_ips "$input" "$output"
+    ;;
+  reverseip)
+    ips_file="resolved_ips.txt"
+    output="reverse_ip_domains.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --ips)
+          ips_file="${2:-$ips_file}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_reverse_ip "$ips_file" "$output"
+    ;;
+  live)
+    input="resolved.txt"
+    output="live.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --input)
+          input="${2:-$input}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_live_hosts "$input" "$output"
+    ;;
+  takeover)
+    input="all_subs_merged.txt"
+    nuclei_out="takeover_findings.txt"
+    subzy_out="subzy_results.txt"
+    templates_dir="~/nuclei-templates/takeovers/"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --input)
+          input="${2:-$input}"
+          shift 2
+          ;;
+        --nuclei-out)
+          nuclei_out="${2:-$nuclei_out}"
+          shift 2
+          ;;
+        --subzy-out)
+          subzy_out="${2:-$subzy_out}"
+          shift 2
+          ;;
+        --templates)
+          templates_dir="${2:-$templates_dir}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_takeover "$input" "$nuclei_out" "$subzy_out" "$templates_dir"
+    ;;
+  portscan)
+    hosts_file="resolved.txt"
+    ips_file="resolved_ips.txt"
+    masscan_out="masscan_raw.txt"
+    nmap_out="nmap_services.xml"
+    rate="5000"
+    wait_time="0"
+    port_range="1-65535"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --hosts)
+          hosts_file="${2:-$hosts_file}"
+          shift 2
+          ;;
+        --ips)
+          ips_file="${2:-$ips_file}"
+          shift 2
+          ;;
+        --masscan-out)
+          masscan_out="${2:-$masscan_out}"
+          shift 2
+          ;;
+        --nmap-out)
+          nmap_out="${2:-$nmap_out}"
+          shift 2
+          ;;
+        --rate)
+          rate="${2:-$rate}"
+          shift 2
+          ;;
+        --wait)
+          wait_time="${2:-$wait_time}"
+          shift 2
+          ;;
+        --ports)
+          port_range="${2:-$port_range}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_portscan "$hosts_file" "$ips_file" "$masscan_out" "$nmap_out" "$rate" "$wait_time" "$port_range"
+    ;;
+  httpxfull)
+    input="resolved.txt"
+    output="httpx_full.txt"
+    live_file="live.txt"
+    ips_file="resolved_ips.txt"
+    waf_out="waf_results.txt"
+    cdn_out="cdn_results.txt"
+    ssl_out="ssl_results.json"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --input)
+          input="${2:-$input}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        --live)
+          live_file="${2:-$live_file}"
+          shift 2
+          ;;
+        --ips)
+          ips_file="${2:-$ips_file}"
+          shift 2
+          ;;
+        --waf-out)
+          waf_out="${2:-$waf_out}"
+          shift 2
+          ;;
+        --cdn-out)
+          cdn_out="${2:-$cdn_out}"
+          shift 2
+          ;;
+        --ssl-out)
+          ssl_out="${2:-$ssl_out}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_httpx_full "$input" "$output" "$live_file" "$ips_file" "$waf_out" "$cdn_out" "$ssl_out"
+    ;;
+  screenshot)
+    live_file="live.txt"
+    output_dir="screenshots"
+    threads="10"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --live)
+          live_file="${2:-$live_file}"
+          shift 2
+          ;;
+        --output-dir)
+          output_dir="${2:-$output_dir}"
+          shift 2
+          ;;
+        --threads)
+          threads="${2:-$threads}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_screenshot "$live_file" "$output_dir" "$threads"
+    ;;
+  crawljs)
+    live_file="live.txt"
+    katana_out="katana_urls.txt"
+    gau_out="gau_urls.txt"
+    all_out="all_urls.txt"
+    sensitive_out="sensitive_files.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --live)
+          live_file="${2:-$live_file}"
+          shift 2
+          ;;
+        --katana)
+          katana_out="${2:-$katana_out}"
+          shift 2
+          ;;
+        --gau)
+          gau_out="${2:-$gau_out}"
+          shift 2
+          ;;
+        --all)
+          all_out="${2:-$all_out}"
+          shift 2
+          ;;
+        --sensitive)
+          sensitive_out="${2:-$sensitive_out}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_crawl_js "$live_file" "$katana_out" "$gau_out" "$all_out" "$sensitive_out"
+    ;;
+  params)
+    urls_file="all_urls.txt"
+    output="params_found.json"
+    threads="10"
+    max_targets="50"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --urls)
+          urls_file="${2:-$urls_file}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        --threads)
+          threads="${2:-$threads}"
+          shift 2
+          ;;
+        --max-targets)
+          max_targets="${2:-$max_targets}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_params "$urls_file" "$output" "$threads" "$max_targets"
+    ;;
+  jssecrets)
+    urls_file="all_urls.txt"
+    js_files_out="js_files.txt"
+    exposures_out="js_exposures.txt"
+    secrets_out="secrets.txt"
+    templates_dir="~/nuclei-templates/exposures/"
+    secretfinder_path="SecretFinder.py"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --urls)
+          urls_file="${2:-$urls_file}"
+          shift 2
+          ;;
+        --js)
+          js_files_out="${2:-$js_files_out}"
+          shift 2
+          ;;
+        --exposures)
+          exposures_out="${2:-$exposures_out}"
+          shift 2
+          ;;
+        --secrets)
+          secrets_out="${2:-$secrets_out}"
+          shift 2
+          ;;
+        --templates)
+          templates_dir="${2:-$templates_dir}"
+          shift 2
+          ;;
+        --secretfinder)
+          secretfinder_path="${2:-$secretfinder_path}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_js_secrets "$urls_file" "$js_files_out" "$exposures_out" "$secrets_out" "$templates_dir" "$secretfinder_path"
+    ;;
+  buildsubs)
+    target="${1:-}"
+    shift || true
+    output="subdomains.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_build_subdomains "$target" "$output"
+    ;;
+  buildpaths)
+    output="paths.txt"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_build_paths "$output"
+    ;;
+  fuzz)
+    target="${1:-}"
+    shift || true
+    subs="subdomains.txt"
+    paths="paths.txt"
+    threads=80
+    results_dir="results"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --subs)
+          subs="${2:-$subs}"
+          shift 2
+          ;;
+        --paths)
+          paths="${2:-$paths}"
+          shift 2
+          ;;
+        --threads)
+          threads="${2:-$threads}"
+          shift 2
+          ;;
+        --results)
+          results_dir="${2:-$results_dir}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_fuzz "$target" "$subs" "$paths" "$threads" "$results_dir"
+    ;;
+  kiterunner)
+    live_file="live.txt"
+    routes_file="routes-large.kite"
+    output="kiterunner_results.txt"
+    threads="10"
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --live)
+          live_file="${2:-$live_file}"
+          shift 2
+          ;;
+        --routes)
+          routes_file="${2:-$routes_file}"
+          shift 2
+          ;;
+        --output)
+          output="${2:-$output}"
+          shift 2
+          ;;
+        --threads)
+          threads="${2:-$threads}"
+          shift 2
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+    step_kiterunner "$live_file" "$routes_file" "$output" "$threads"
+    ;;
+  all)
+    target_input="${1:-}"
+    shift || true
+    mode="normal"
+    cookie=""
+    patterns="base_patterns.txt"
+    subs="subdomains.txt"
+    paths="paths.txt"
+    threads=80
+    force_resolve="0"
+
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --mode)
+          mode="${2:-$mode}"
+          shift 2
+          ;;
+        --cookie)
+          cookie="${2:-}"
+          shift 2
+          ;;
+        --patterns)
+          patterns="${2:-$patterns}"
+          shift 2
+          ;;
+        --subs)
+          subs="${2:-$subs}"
+          shift 2
+          ;;
+        --paths)
+          paths="${2:-$paths}"
+          shift 2
+          ;;
+        --threads)
+          threads="${2:-$threads}"
+          shift 2
+          ;;
+        --force-resolve)
+          force_resolve="1"
+          shift 1
+          ;;
+        *)
+          echo "[!] Opcao invalida: $1" >&2
+          exit 1
+          ;;
+      esac
+    done
+
+    if [[ -z "$target_input" ]]; then
+      echo "Uso: recon all <dominio|arquivo.txt> [...]" >&2
+      exit 1
+    fi
+
+    if [[ -f "$target_input" ]]; then
+      mapfile -t targets < <(grep -v '^$' "$target_input" | sort -u)
+    else
+      targets=("$target_input")
+    fi
+
+    if [[ "${#targets[@]}" -eq 0 ]]; then
+      echo "[!] Nenhum dominio valido encontrado." >&2
+      exit 1
+    fi
+
+    for target in "${targets[@]}"; do
+      if [[ "$target" != *.* ]]; then
+        echo "[!] Dominio invalido, pulando: $target"
+        continue
+      fi
+      run_all_pipeline_for_target "$target" "$mode" "$cookie" "$patterns" "$subs" "$paths" "$threads" "$force_resolve"
+    done
+    ;;
+
+  -h|--help|help|"")
+    usage
+    ;;
+
+  *)
+    echo "[!] Comando invalido: $cmd" >&2
+    usage
+    exit 1
+    ;;
+esac
