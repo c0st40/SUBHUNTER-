@@ -367,7 +367,6 @@ step_dns_recon() {
     echo "[2/6] DNSSEC nao detectado em $target. Pulando NSEC walking."
   fi
 
-  # Aproveita descobertas do dnsrecon no pool de subdominios.
   cat "$axfr_output" "$output" 2>/dev/null | \
     grep -Eo "([a-zA-Z0-9._-]+\\.)+${target//./\\.}" \
     | sed 's/^\*\.//' \
@@ -408,12 +407,10 @@ step_mail_recon() {
     dig +short TXT "_dmarc.$target"
   } >> "$output" 2>/dev/null || true
 
-  # IOCs uteis para relatorio (IPs, dominios e servicos de terceiros).
   grep -Eo '([0-9]{1,3}\.){3}[0-9]{1,3}' "$output" >> "$ioc_output" || true
   grep -Eo '([a-zA-Z0-9._-]+\.[a-zA-Z]{2,})' "$output" >> "$ioc_output" || true
   sort -u "$ioc_output" -o "$ioc_output" || true
 
-  # Subdominios do proprio alvo encontrados em MX/TXT/DMARC entram no pool.
   grep -Eo "([a-zA-Z0-9._-]+\\.)+${target//./\\.}" "$output" \
     | sed 's/^\*\.//' \
     | anew_or_append all_subs.txt || true
@@ -441,7 +438,6 @@ step_csp_mining() {
     | grep -oE '[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}' \
     | sort -u > "$output" || true
 
-  # Aproveita no pool de subdominios apenas o que pertence ao alvo.
   if [[ -f "$output" ]]; then
     grep -E "([a-zA-Z0-9._-]+\.)?${target//./\\.}$" "$output" \
       | sed 's/^\*\.//' \
@@ -584,7 +580,6 @@ EOF
     : > "$output"
   fi
 
-  # Mescla no inventario para etapas seguintes.
   cat "$output" 2>/dev/null | anew_or_append all_subs.txt || true
 
   local total_resolved
@@ -667,16 +662,24 @@ step_github() {
   fi
 
   # trufflehog: secrets em repos da organizacao.
+  # FIX 2026: flag correta e --results=verified (nao --only-verified)
   if command -v trufflehog >/dev/null 2>&1; then
-    trufflehog github --org="$org_name" --token="$token" --only-verified --json > "$secrets_out" 2>/dev/null || true
+    trufflehog github --org="$org_name" --token="$token" --results=verified --json > "$secrets_out" 2>/dev/null || true
   else
     echo "{\"warning\":\"trufflehog ausente\"}" > "$secrets_out"
   fi
 
   # BLOCO 1 — CFOR (Cross-Fork Object Reference)
+  # FIX 2026: subcomando correto e github-experimental, nao github
+  # --object-discovery so existe no subcomando github-experimental
   : > "$cfor_out"
   if command -v trufflehog >/dev/null 2>&1 && [[ -n "$token" ]]; then
-    trufflehog github --org="$org_name" --token="$token" --object-discovery --only-verified --json > "$cfor_out" 2>/dev/null || true
+    trufflehog github-experimental \
+      --repo "https://github.com/${org_name}" \
+      --token="$token" \
+      --object-discovery \
+      --results=verified \
+      --json > "$cfor_out" 2>/dev/null || true
   fi
 
   if command -v gitleaks >/dev/null 2>&1; then
@@ -688,6 +691,7 @@ step_github() {
   echo "[6/6] CFOR finalizado: $cfor_out (${cfor_total} findings)"
 
   # BLOCO 2 — CI/CD Workflow scanning
+  # FIX 2026: pattern mais preciso para secrets em workflows, reduz ruido
   : > "$workflows_out"
   if [[ -n "$token" ]]; then
     curl -s -H "Authorization: Bearer ${token}" \
@@ -698,7 +702,9 @@ step_github() {
           "https://api.github.com/repos/${repo}/contents/.github/workflows" 2>/dev/null | \
           jq -r '.[].download_url?' 2>/dev/null | while read -r wf_url; do
             [[ -z "$wf_url" ]] && continue
-            curl -s "$wf_url" 2>/dev/null | grep -E '(SECRET|TOKEN|PASSWORD|KEY|CREDENTIAL)\s*[:=]' >> "$workflows_out" || true
+            curl -s "$wf_url" 2>/dev/null | \
+              grep -E '\$\{\{[[:space:]]*secrets\.[A-Z_]+[[:space:]]*\}\}' \
+              >> "$workflows_out" || true
           done
       done
   fi
@@ -707,7 +713,6 @@ step_github() {
   workflows_total=$(wc -l < "$workflows_out" 2>/dev/null || echo 0)
   echo "[6/6] Workflow scan finalizado: $workflows_out (${workflows_total} linhas suspeitas)"
 
-  # Mescla subdominios do github-subdomains no inventario.
   if [[ -f "$subs_out" ]]; then
     cat "$subs_out" \
       | tr '[:upper:]' '[:lower:]' \
@@ -750,9 +755,10 @@ step_crawl_js() {
   : > "$katana_out"
   : > "$gau_out"
 
+  # FIX 2026: adicionados -jsl (jsluice nativo), -kf all (robots+sitemap) e -path-climb
   echo "[6/6] Crawling ativo (katana + gospider)..."
   if command -v katana >/dev/null 2>&1; then
-    katana -list "$targets_file" -d 5 -jc -silent -o "$katana_out" >/dev/null 2>&1 || true
+    katana -list "$targets_file" -d 5 -jc -jsl -kf all -path-climb -silent -o "$katana_out" >/dev/null 2>&1 || true
   fi
 
   if command -v gospider >/dev/null 2>&1; then
@@ -761,17 +767,25 @@ step_crawl_js() {
   fi
   sort -u "$katana_out" -o "$katana_out" || true
 
-  echo "[6/6] URLs historicas (gau + waybackurls)..."
+  echo "[6/6] URLs historicas (gau + waybackurls + waymore)..."
   if command -v gau >/dev/null 2>&1; then
     cat "$targets_file" | gau --threads 5 2>/dev/null | sort -u > "$gau_out" || true
   fi
   if command -v waybackurls >/dev/null 2>&1; then
     cat "$targets_file" | waybackurls 2>/dev/null | sort -u >> "$gau_out" || true
   fi
+
+  # FIX 2026: waymore usa -output em vez de -oU (interface renomeada)
   if command -v waymore >/dev/null 2>&1; then
+    local waymore_tmp
+    waymore_tmp=$(mktemp -d)
     cat "$targets_file" | sed 's#https\?://##' | while read -r t; do
-      waymore -i "$t" -mode U -oU /dev/stdout 2>/dev/null >> "$gau_out" || true
+      [[ -z "$t" ]] && continue
+      local waymore_out="${waymore_tmp}/waymore_${RANDOM}.txt"
+      waymore -i "$t" -mode U -output "$waymore_out" 2>/dev/null || true
+      [[ -f "$waymore_out" ]] && cat "$waymore_out" >> "$gau_out" || true
     done
+    rm -rf "$waymore_tmp"
   fi
   sort -u "$gau_out" -o "$gau_out" || true
 
@@ -971,19 +985,22 @@ step_takeover() {
     # shellcheck disable=SC2086
     nuclei -l "$input" -t ${templates_dir} -o "$nuclei_out" -silent >/dev/null 2>&1 || true
 
+    # FIX 2026: -bulk-size renomeado para -bs; adicionado -hpd para honeypot detection
     nuclei -l "$input" \
       -t ~/nuclei-templates/cves/ \
       -t ~/nuclei-templates/exposures/ \
       -t ~/nuclei-templates/misconfiguration/ \
       -severity critical,high,medium \
-      -rate-limit 50 \
-      -bulk-size 25 \
+      -rl 50 \
+      -bs 25 \
+      -c 25 \
+      -hpd \
       -silent \
       -o "$nuclei_vuln_out" 2>/dev/null || true
 
     nuclei -l "$input" \
       -t ~/nuclei-templates/technologies/ \
-      -rate-limit 100 \
+      -rl 100 \
       -silent \
       -o "$nuclei_tech_out" 2>/dev/null || true
   else
@@ -1026,7 +1043,6 @@ step_cloud() {
 
   echo "[6/6] Cloud discovery com keyword: $keyword"
 
-  # cloud_enum (AWS/GCP/Azure; com opcao para desabilitar Azure).
   if command -v python3 >/dev/null 2>&1; then
     if [[ -f "cloud_enum.py" ]]; then
       if [[ "$disable_azure" == "1" ]]; then
@@ -1041,7 +1057,6 @@ step_cloud() {
     echo "[!] python3 ausente; cloud_enum nao executado." >> "$cloud_out"
   fi
 
-  # S3Scanner via root_domains.txt (fallback para target quando arquivo nao existir).
   if command -v s3scanner >/dev/null 2>&1; then
     local domains_file
     domains_file=$(mktemp)
@@ -1056,7 +1071,6 @@ step_cloud() {
     echo "[!] s3scanner ausente; varredura S3 nao executada." >> "$s3_out"
   fi
 
-  # Extrai potenciais hosts de storage para enriquecer all_subs quando aplicavel.
   cat "$cloud_out" "$s3_out" 2>/dev/null \
     | grep -Eo '([a-zA-Z0-9._-]+\.[a-zA-Z]{2,})' \
     | sort -u > cloud_assets_domains.txt || true
@@ -1468,18 +1482,18 @@ step_subs() {
         sed 's/\*\.//g' | grep -i "\.$domain$" >> "$tmp" || true
     fi
 
-    curl -s "https://dns.bufferover.run/dns?q=.$domain" 2>/dev/null | \
-      jq -r '.FDNS_A[]?' 2>/dev/null | \
-      cut -d',' -f2 >> "$tmp" || true
+    # FIX 2026: dns.bufferover.run foi descontinuado — substituido por rapiddns + hackertarget
+    curl -s "https://rapiddns.io/subdomain/${domain}?full=1" 2>/dev/null | \
+      grep -oE "([a-zA-Z0-9._-]+\.)+${domain//./\\.}" >> "$tmp" || true
+
+    curl -s "https://api.hackertarget.com/hostsearch/?q=${domain}" 2>/dev/null | \
+      cut -d',' -f1 | \
+      grep -E "([a-zA-Z0-9._-]+\.)+${domain//./\\.}" >> "$tmp" || true
 
     curl -s "https://urlscan.io/api/v1/search/?q=domain:$domain" 2>/dev/null | \
       jq -r '.results[].page.domain?' 2>/dev/null >> "$tmp" || true
 
-    ############################################################
-    # BLOCO 1 — Fontes Passivas Adicionais (GitHub + Wayback)
-    ############################################################
-
-    # Wayback CDX: extrai hosts historicos arquivados.
+    # Wayback CDX
     curl -s "https://web.archive.org/cdx/search/cdx?url=*.${domain}/*&output=text&fl=original&collapse=urlkey" 2>/dev/null | \
       sed 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##' | \
       cut -d'/' -f1 | \
@@ -1487,7 +1501,7 @@ step_subs() {
       sed 's/^\*\.//' | \
       grep -iE "([a-zA-Z0-9._-]+\.)+${domain//./\\.}$" >> "$tmp" || true
 
-    # GitHub: busca referencias de subdominios em codigo/indexacao.
+    # GitHub code search
     if [[ -n "${GITHUB_TOKEN:-}" ]]; then
       local page
       for page in 1 2; do
@@ -1498,7 +1512,6 @@ step_subs() {
           grep -Eo "([a-zA-Z0-9._-]+\\.)+${domain//./\\.}" >> "$tmp" || true
       done
     else
-      # Fallback sem token: scraping simples da busca publica.
       curl -sL "https://github.com/search?q=%22.${domain}%22&type=code" 2>/dev/null | \
         grep -Eo "([a-zA-Z0-9._-]+\\.)+${domain//./\\.}" >> "$tmp" || true
     fi
@@ -1723,14 +1736,12 @@ step_build_subdomains() {
   tmp_hosts=$(mktemp)
   tmp_labels=$(mktemp)
 
-  # Fontes que ja vieram das etapas anteriores.
   for src in resolved.txt all_subs_merged.txt all_subs.txt brute_raw.txt; do
     if [[ -f "$src" ]]; then
       cat "$src" >> "$tmp_hosts"
     fi
   done
 
-  # Extraindo labels dos subdominios ja descobertos para o alvo.
   if [[ -s "$tmp_hosts" ]]; then
     awk -v target="$target" '
       {
@@ -1750,7 +1761,6 @@ step_build_subdomains() {
     ' "$tmp_hosts" >> "$tmp_labels"
   fi
 
-  # Aproveita seeds das listas ja geradas no pipeline.
   for src in smart_wordlist.txt base_patterns.txt; do
     if [[ -f "$src" ]]; then
       cat "$src" >> "$tmp_labels"
@@ -1766,7 +1776,6 @@ step_build_subdomains() {
   : > "$output"
   cat "${output}.seed" >> "$output"
 
-  # Expansao inteligente com base no que foi observado.
   grep -E '[0-9]+$' "${output}.seed" | sed 's/[0-9]*$//' | sort -u > "${output}.numeric_base" || true
   while IFS= read -r base; do
     [[ -z "$base" ]] && continue
@@ -1804,7 +1813,6 @@ step_build_paths() {
   tmp_terms=$(mktemp)
   tmp_paths=$(mktemp)
 
-  # Base de caminhos comuns de alta utilidade.
   cat > "$tmp_paths" <<'EOF'
 /
 admin
@@ -1867,7 +1875,6 @@ qa
 prod
 EOF
 
-  # Termos inferidos dos artefatos gerados anteriormente.
   for src in base_patterns.txt smart_wordlist.txt subdomains.txt all_subs.txt all_subs_merged.txt resolved.txt brute_raw.txt; do
     if [[ -f "$src" ]]; then
       cat "$src" >> "$tmp_terms"
@@ -1891,7 +1898,6 @@ EOF
   if [[ -s "${output}.terms" ]]; then
     cat "${output}.terms" >> "$tmp_paths"
 
-    # Expande em namespaces e versões comuns.
     while IFS= read -r t; do
       [[ -z "$t" ]] && continue
       echo "$t/api" >> "$tmp_paths"
@@ -1944,7 +1950,7 @@ step_live_hosts() {
       -t ~/nuclei-templates/misconfiguration/ \
       -o "$nuclei_tech_out" \
       -silent \
-      -rate-limit 50 \
+      -rl 50 \
       2>/dev/null || true
 
     local nuclei_total
@@ -1974,6 +1980,9 @@ step_httpx_full() {
 
   require_cmd httpx
 
+  # FIX 2026: removido -include-response (flag invalida standalone)
+  # Usando -json para capturar todos os campos incluindo body preview
+  # -probe-all-ips e -follow-host-redirects continuam validos
   echo "[6/6] Coletando fingerprint HTTP completo com httpx..."
   httpx -list "$input" \
     -status-code \
@@ -1985,16 +1994,16 @@ step_httpx_full() {
     -server \
     -tech-detect \
     -probe-all-ips \
-    -include-response \
     -follow-host-redirects \
     -random-agent \
+    -json \
     -o "$output" || true
 
   local total
   total=$(wc -l < "$output" 2>/dev/null || echo 0)
   echo "[6/6] Saida completa do httpx salva em: $output (${total} linhas)"
 
-  # Extração de favicon hash + correlação com Shodan
+  # Favicon hash + correlacao com Shodan
   if command -v httpx >/dev/null 2>&1 && [[ -f "$live_file" ]]; then
     httpx -list "$live_file" -favicon -hash sha256 -silent -o "$favicon_out" 2>/dev/null || true
     grep -oE 'sha256:[a-f0-9]+' "$favicon_out" | sort -u > "${favicon_out%.txt}_hashes.txt" || true
@@ -2014,7 +2023,7 @@ step_httpx_full() {
     fi
   fi
 
-  # Etapa 15: WAF/CDN detection
+  # WAF/CDN detection
   : > "$waf_out"
   : > "$cdn_out"
 
@@ -2038,6 +2047,18 @@ step_httpx_full() {
     testssl.sh --file "$live_file" --jsonfile "$ssl_out" --quiet >/dev/null 2>&1 || true
   else
     echo "[!] testssl.sh ausente ou arquivo live nao encontrado: $live_file" > "$ssl_out"
+  fi
+
+  # cvemap: correlacao CVE com tecnologias detectadas
+  if command -v cvemap >/dev/null 2>&1 && [[ -s "$output" ]]; then
+    echo "[6/6] Rodando cvemap sobre tecnologias detectadas..."
+    local cvemap_out="${output%.txt}_cvemap.json"
+    jq -r '.tech[]? // empty' "$output" 2>/dev/null | \
+      sort -u | \
+      cvemap -q -json > "$cvemap_out" 2>/dev/null || true
+    local cvemap_total
+    cvemap_total=$(wc -l < "$cvemap_out" 2>/dev/null || echo 0)
+    echo "[6/6] cvemap finalizado: $cvemap_out (${cvemap_total} CVEs)"
   fi
 
   local waf_total cdn_total ssl_total
@@ -2265,7 +2286,6 @@ run_all_pipeline_for_target() {
     echo "[*] Subfinder recursivo finalizado. Total all_subs.txt: ${new_count}"
   fi
 
-  # Paralelizacao 1: takeover + extração de IPs + live probe
   progress_step "Subdomain takeover checks"
   step_takeover "all_subs_merged.txt" "takeover_findings.txt" "subzy_results.txt" "~/nuclei-templates/takeovers/" &
   pid_takeover=$!
@@ -2287,7 +2307,6 @@ run_all_pipeline_for_target() {
   wait "$pid_takeover" || true
   wait "$pid_live" || true
 
-  # Paralelizacao 2: screenshots + fingerprint HTTP/WAF/CDN/SSL
   progress_step "Screenshots"
   step_screenshot "live.txt" "screenshots" "10" &
   pid_screenshot=$!
@@ -2366,6 +2385,7 @@ run_all_pipeline_for_target() {
   cp -f live.txt "results/${target_id}/live.txt" 2>/dev/null || true
   cp -f live_nuclei_tech.txt "results/${target_id}/live_nuclei_tech.txt" 2>/dev/null || true
   cp -f httpx_full.txt "results/${target_id}/httpx_full.txt" 2>/dev/null || true
+  cp -f httpx_full_cvemap.json "results/${target_id}/httpx_full_cvemap.json" 2>/dev/null || true
   cp -f waf_results.txt "results/${target_id}/waf_results.txt" 2>/dev/null || true
   cp -f cdn_results.txt "results/${target_id}/cdn_results.txt" 2>/dev/null || true
   cp -f ssl_results.json "results/${target_id}/ssl_results.json" 2>/dev/null || true
